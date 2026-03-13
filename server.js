@@ -721,6 +721,79 @@ function toolDisplayName(toolName, input) {
 // ── Abort controller for current request ────────────────────────────────────
 let currentAbortController = null
 
+// ── OpenRouter support ────────────────────────────────────────────────────────
+function isOpenRouterKey(key) {
+  return key.startsWith('sk-or-v1-')
+}
+
+function mapModelToOpenRouter(modelId) {
+  const map = {
+    'claude-haiku-4-5-20251001': 'anthropic/claude-haiku-4-5-20251001',
+    'claude-sonnet-4-6': 'anthropic/claude-sonnet-4-6',
+    'claude-opus-4-6': 'anthropic/claude-opus-4-6',
+    'haiku': 'anthropic/claude-haiku-4-5-20251001',
+    'sonnet': 'anthropic/claude-sonnet-4-6',
+    'opus': 'anthropic/claude-opus-4-6',
+  }
+  if (map[modelId]) return map[modelId]
+  if (modelId.includes('/')) return modelId // Already OpenRouter format
+  return `anthropic/${modelId}`
+}
+
+async function callOpenRouterStreaming(token, orModel, orMessages, sendStream, abortController) {
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'HTTP-Referer': 'https://atum-five.vercel.app',
+      'X-Title': 'ATUM',
+    },
+    body: JSON.stringify({
+      model: orModel,
+      messages: orMessages,
+      stream: true,
+      max_tokens: 16000,
+    }),
+    signal: abortController.signal,
+  })
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}))
+    throw new Error(`OpenRouter ${response.status}: ${errData?.error?.message || response.statusText}`)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let fullText = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop()
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6).trim()
+      if (data === '[DONE]') continue
+      try {
+        const json = JSON.parse(data)
+        const delta = json.choices?.[0]?.delta?.content
+        if (delta) {
+          fullText += delta
+          sendStream({ type: 'stream-text', data: delta, timestamp: Date.now() })
+        }
+      } catch { /* partial chunk */ }
+    }
+  }
+
+  return fullText
+}
+
 // ============================================================================
 // EXPRESS ROUTES
 // ============================================================================
@@ -816,6 +889,72 @@ app.post('/api/chat', async (req, res) => {
   }
 
   sendStream({ type: 'start', timestamp: Date.now() })
+
+  // ── OpenRouter fast path ──────────────────────────────────────────────────
+  if (isOpenRouterKey(token)) {
+    try {
+      const { prompt: realSystemPrompt, model: rawAgentModel } = loadAgentSystemPrompt(agentId || 'atum', systemPrompt)
+      const agentModelId = requestModel || resolveModel(rawAgentModel)
+      const orModel = mapModelToOpenRouter(agentModelId)
+      const baseContext = loadBaseContext(agentId || 'atum')
+
+      let chatRules = ''
+      try {
+        const rulePath = RULES_PATH
+        if (fs.existsSync(rulePath)) {
+          chatRules = '\n\n---\nPRIORITY RULES\n' + fs.readFileSync(rulePath, 'utf8') + '\n---\n'
+        }
+      } catch {}
+
+      const fullSystem = ((realSystemPrompt || '') + baseContext + chatRules).trim() || undefined
+
+      const MAX_HISTORY = 10
+      let trimmedMsgs = messages || []
+      if (trimmedMsgs.length > MAX_HISTORY) {
+        trimmedMsgs = trimmedMsgs.slice(-MAX_HISTORY)
+        if (trimmedMsgs[0]?.role !== 'user') trimmedMsgs = trimmedMsgs.slice(1)
+      }
+
+      // Build OpenAI-format messages
+      const orMessages = []
+      if (fullSystem) orMessages.push({ role: 'system', content: fullSystem })
+      for (const m of trimmedMsgs) {
+        const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+        orMessages.push({ role: m.role, content })
+      }
+      // Append attachment context to last user message
+      if (attachmentContext && orMessages.length > 0) {
+        const last = orMessages[orMessages.length - 1]
+        if (last.role === 'user') last.content += attachmentContext
+      }
+
+      sendStream({
+        type: 'json-event',
+        event: { type: 'system', subtype: 'init', model: orModel, permissionMode: 'chat' },
+        timestamp: Date.now(),
+      })
+
+      emitTUIStatus(sendStream, '| Thinking...')
+      const fullText = await callOpenRouterStreaming(token, orModel, orMessages, sendStream, abortController)
+
+      if (!fullText.trim()) sendStream({ type: 'stream-text', data: 'Done.', timestamp: Date.now() })
+
+      tempFiles.forEach(f => { try { fs.unlinkSync(f) } catch {} })
+      sendStream({ type: 'end', code: 0, timestamp: Date.now() })
+    } catch (err) {
+      tempFiles.forEach(f => { try { fs.unlinkSync(f) } catch {} })
+      if (abortController.signal.aborted) {
+        sendStream({ type: 'end', code: 1, aborted: true, timestamp: Date.now() })
+      } else {
+        const errMsg = err?.message || String(err)
+        sendStream({ type: 'stream-text', data: `\nErreur OpenRouter : ${errMsg}`, timestamp: Date.now() })
+        sendStream({ type: 'end', code: 1, timestamp: Date.now() })
+      }
+    }
+    currentAbortController = null
+    if (!res.writableEnded) res.end()
+    return
+  }
 
   // ── SDK retry loop ────────────────────────────────────────────────────────
   const MAX_SDK_RETRIES = 4

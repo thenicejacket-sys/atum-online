@@ -32,7 +32,7 @@
   // ── window.electronAPI ────────────────────────────────────────────────────
 
   window.electronAPI = {
-    isElectron: false,
+    isElectron: true,
 
     // ── Chat avec streaming NDJSON ──────────────────────────────────────────
     chat: async function (params) {
@@ -223,12 +223,13 @@
     modal.innerHTML = `
       <h2 style="margin:0 0 8px;font-size:18px;font-weight:600;">⚙️ Configuration ATUM</h2>
       <p style="margin:0 0 20px;font-size:13px;color:#888;line-height:1.5;">
-        Entrez votre clé API Anthropic (<code style="color:#7EC8A4">sk-ant-api03-...</code>)<br>
-        Obtenez-la sur <a href="https://console.anthropic.com" target="_blank" style="color:#7EC8A4">console.anthropic.com</a>
+        Clé Anthropic (<code style="color:#7EC8A4">sk-ant-...</code>) ou OpenRouter (<code style="color:#7EC8A4">sk-or-v1-...</code>)<br>
+        Anthropic : <a href="https://console.anthropic.com" target="_blank" style="color:#7EC8A4">console.anthropic.com</a> &nbsp;|&nbsp;
+        OpenRouter : <a href="https://openrouter.ai/keys" target="_blank" style="color:#7EC8A4">openrouter.ai/keys</a>
       </p>
 
-      <label style="display:block;font-size:12px;color:#888;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">Clé API Claude</label>
-      <input id="atum-key-input" type="password" placeholder="sk-ant-api03-..."
+      <label style="display:block;font-size:12px;color:#888;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">Clé API</label>
+      <input id="atum-key-input" type="password" placeholder="sk-ant-... ou sk-or-v1-..."
         value="${currentKey}"
         style="width:100%;box-sizing:border-box;background:#2A2A3C;border:1px solid #444;border-radius:6px;
                padding:10px 12px;color:#F0ECE4;font-size:13px;margin-bottom:16px;outline:none;" />
@@ -270,8 +271,8 @@
     saveBtn.addEventListener('click', function () {
       const key = input.value.trim()
       const model = modelSelect.value
-      if (!key.startsWith('sk-ant-')) {
-        errorEl.textContent = 'Format invalide. La clé doit commencer par sk-ant-'
+      if (!key.startsWith('sk-ant-') && !key.startsWith('sk-or-v1-')) {
+        errorEl.textContent = 'Format invalide. La clé doit commencer par sk-ant- (Anthropic) ou sk-or-v1- (OpenRouter)'
         errorEl.style.display = 'block'
         return
       }

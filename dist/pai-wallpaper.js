@@ -145,48 +145,11 @@
     document.body.appendChild(panel)
   }
 
-  // ── Injecter le bouton 🖼 dans la sidebar ─────────────────────────────────
-  function injectWallpaperBtn () {
-    if (document.getElementById('pai-wallpaper-btn')) return
-    var sidebar = document.querySelector('[class*="w-\\[60px\\]"]')
-      || document.querySelector('[class*="#1C1C28"]')
-    if (!sidebar) { setTimeout(injectWallpaperBtn, 800); return }
-
-    var btn = document.createElement('button')
-    btn.id = 'pai-wallpaper-btn'
-    btn.title = 'Thèmes de fond'
-    btn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'
-    btn.style.cssText = [
-      'width:40px', 'height:40px', 'border-radius:12px', 'border:none',
-      'background:transparent', 'color:var(--sidebar-icon,#888)',
-      'cursor:pointer', 'display:flex', 'align-items:center',
-      'justify-content:center', 'flex-shrink:0', 'padding:0',
-      'margin-top:4px', 'outline:none',
-    ].join(';')
-
-    btn.addEventListener('mouseenter', function () {
-      btn.style.background = 'var(--sidebar-hover,rgba(255,255,255,0.06))'
-    })
-    btn.addEventListener('mouseleave', function () {
-      btn.style.background = 'transparent'
-    })
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation()
-      window._paiShowWallpaperPicker()
-    })
-
-    sidebar.appendChild(btn)
-  }
-
   // ── Init ──────────────────────────────────────────────────────────────────
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () {
-      initWallpaper()
-      setTimeout(injectWallpaperBtn, 1500)
-    })
+    document.addEventListener('DOMContentLoaded', function () { initWallpaper() })
   } else {
     initWallpaper()
-    setTimeout(injectWallpaperBtn, 1500)
   }
 
 })()

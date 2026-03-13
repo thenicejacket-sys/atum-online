@@ -336,59 +336,10 @@
     overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove() })
   }
 
-  // ── Bouton paramètres dans l'interface ────────────────────────────────────
-  function injectSettingsButton() {
-    if (document.getElementById('atum-settings-btn')) return
-    const sidebar = document.querySelector('[class*="sidebar"], [class*="Sidebar"], nav')
-    if (!sidebar) { setTimeout(injectSettingsButton, 800); return }
-
-    const btn = document.createElement('button')
-    btn.id = 'atum-settings-btn'
-    btn.title = 'Paramètres ATUM (clé API, modèle)'
-    btn.innerHTML = '⚙️'
-    btn.style.cssText = `
-      position:fixed;bottom:16px;right:16px;z-index:9999;
-      width:36px;height:36px;border-radius:50%;
-      background:#2A2A3C;border:1px solid #444;
-      color:#888;font-size:16px;cursor:pointer;
-      display:flex;align-items:center;justify-content:center;
-      transition:background .2s;
-    `
-    btn.addEventListener('mouseenter', function () { btn.style.background = '#3A3A4C' })
-    btn.addEventListener('mouseleave', function () { btn.style.background = '#2A2A3C' })
-    btn.addEventListener('click', function () { window._atumShowApiKeyModal() })
-
-    document.body.appendChild(btn)
-  }
-
-  // ── Bouton toggle dark/light ───────────────────────────────────────────────
-  function injectThemeToggle() {
-    if (document.getElementById('pai-theme-toggle')) return
-    var nav = document.querySelector('[class*="w-\\[60px\\]"], [class*="flex-col"][class*="items-center"][class*="border-r"]')
-    if (!nav) { setTimeout(injectThemeToggle, 800); return }
-
-    var btn = document.createElement('button')
-    btn.id = 'pai-theme-toggle'
-    var currentTheme = document.documentElement.getAttribute('data-theme') || 'dark'
-    btn.title = currentTheme === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'
-    btn.textContent = currentTheme === 'dark' ? '☀️' : '🌙'
-
-    btn.addEventListener('click', function () {
-      var theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'
-      document.documentElement.setAttribute('data-theme', theme)
-      localStorage.setItem('pai_theme', theme)
-      btn.textContent = theme === 'dark' ? '☀️' : '🌙'
-      btn.title = theme === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'
-    })
-
-    nav.appendChild(btn)
-  }
-
   // ── Auto-prompt si pas de clé au démarrage ────────────────────────────────
   document.addEventListener('DOMContentLoaded', function () {
     setTimeout(function () {
-      injectSettingsButton()
-      injectThemeToggle()
+      if (typeof window._paiInjectSettingsBtn === 'function') window._paiInjectSettingsBtn()
       if (!localStorage.getItem('atum_api_key')) {
         window._atumShowApiKeyModal()
       }

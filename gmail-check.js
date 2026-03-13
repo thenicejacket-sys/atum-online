@@ -10,11 +10,12 @@
 const fs   = require('fs')
 const path = require('path')
 
-const GMAIL_TOKEN      = JSON.parse(process.env.GMAIL_TOKEN || '{}')
+const GMAIL_TOKEN        = JSON.parse(process.env.GMAIL_TOKEN || '{}')
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
-const AGENTS_DIR       = path.join(__dirname, 'agents')
-const LABEL_PROCESSED  = 'PAI-Processed'
-const MAX_EMAILS       = 5
+const AGENTS_DIR         = path.join(__dirname, 'agents')
+const CONFIG_PATH        = path.join(__dirname, 'gmail-config.json')
+const LABEL_PROCESSED    = 'PAI-Processed'
+const MAX_EMAILS         = 5
 
 if (!OPENROUTER_API_KEY) {
   console.error('[Gmail] ❌ Variable OPENROUTER_API_KEY manquante')
@@ -23,6 +24,17 @@ if (!OPENROUTER_API_KEY) {
 if (!GMAIL_TOKEN.refresh_token) {
   console.error('[Gmail] ❌ Variable GMAIL_TOKEN invalide ou manquante')
   process.exit(1)
+}
+
+// ── Vérifier si le daemon est activé ──────────────────────────────────────
+try {
+  const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
+  if (!cfg.enabled) {
+    console.log('[Gmail] ⏸️  Daemon désactivé (gmail-config.json → enabled: false)')
+    process.exit(0)
+  }
+} catch {
+  console.log('[Gmail] ℹ️  gmail-config.json absent — daemon actif par défaut')
 }
 
 // ── Requêtes Gmail API ─────────────────────────────────────────────────────

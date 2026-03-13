@@ -17,6 +17,8 @@
       light:       './assets/atum-welcome-bg-light.png',
       rightDark:   './assets/atum-right-bg.png',
       rightLight:  './assets/atum-right-bg-light.png',
+      leftDark:    './assets/atum-right-bg.png',
+      leftLight:   './assets/atum-right-bg-light.png',
     }
     // Nouveaux thèmes ajoutés via window._paiAddWallpaper(theme)
   ]
@@ -28,6 +30,36 @@
     var panel = document.getElementById('pai-wallpaper-panel')
     if (panel) { panel.remove(); window._paiShowWallpaperPicker() }
   }
+
+  // ── Trouver le sidebar gauche ─────────────────────────────────────────────
+  function _getSidebar () {
+    var btn = document.querySelector('button[title="Parametres"]')
+    return btn ? btn.closest('[class*="w-[60px]"]') : null
+  }
+
+  // ── Appliquer l'image de fond sur le sidebar gauche ───────────────────────
+  function _applySidebarBg (theme) {
+    var sidebar = _getSidebar()
+    if (!sidebar) return
+    if (theme && (theme.leftDark || theme.leftLight)) {
+      var isDark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark'
+      var src = isDark ? (theme.leftDark || '') : (theme.leftLight || '')
+      sidebar.style.backgroundImage = src ? 'url(' + src + ')' : ''
+      sidebar.style.backgroundSize = 'cover'
+      sidebar.style.backgroundPosition = 'center'
+      sidebar.style.backgroundRepeat = 'no-repeat'
+    } else {
+      // Thème sans fond gauche → réinitialiser
+      sidebar.style.backgroundImage = ''
+    }
+  }
+
+  // ── Observer le changement dark/light pour mettre à jour le sidebar ───────
+  new MutationObserver(function () {
+    var key = localStorage.getItem('pai_wallpaper') || 'ai'
+    var theme = window._paiWallpapers.find(function (w) { return w.key === key })
+    _applySidebarBg(theme || null)
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
 
   // ── Appliquer un thème ────────────────────────────────────────────────────
   window._paiApplyWallpaper = function (key) {
@@ -46,6 +78,8 @@
     document.querySelectorAll('.pai-right-light').forEach(function (el) {
       if (el.tagName === 'IMG') el.src = theme.rightLight
     })
+    // Fond gauche (sidebar)
+    _applySidebarBg(theme)
     // Mettre à jour l'état actif dans le picker
     document.querySelectorAll('[data-wallpaper-key]').forEach(function (el) {
       el.setAttribute('data-active', el.getAttribute('data-wallpaper-key') === key ? '1' : '0')

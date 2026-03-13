@@ -137,19 +137,6 @@ body, #root {
   font-feature-settings: "kern" 1, "liga" 1;
 }
 
-/* Stabiliser le rendu du texte — évite la pixellisation au streaming */
-p, span, h1, h2, h3, h4, h5, h6, div, li, td, th, label, button, input, textarea {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  transform: translateZ(0); /* Force GPU layer stable */
-  backface-visibility: hidden;
-}
-
-/* Désactiver les transforms sur boutons — cause subpixel blur */
-button:active {
-  transform: translateZ(0) scale(0.96) !important;
-}
 
 /* ================================================================
    SIDEBAR ICON NAV — override hardcoded #1C1C28
@@ -169,18 +156,13 @@ html[data-theme="light"] [class*="1C1C28"] svg {
 [class*="#1C1C28"] button,
 [class*="1C1C28"] button {
   color: var(--sidebar-icon) !important;
-  transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease !important;
+  transition: background-color 0.15s ease !important;
   border-radius: 12px !important;
 }
 [class*="#1C1C28"] button:hover,
 [class*="1C1C28"] button:hover {
   background-color: var(--sidebar-hover) !important;
   color: var(--sidebar-icon-active) !important;
-  transform: scale(1.04) !important;
-}
-[class*="#1C1C28"] button:active,
-[class*="1C1C28"] button:active {
-  transform: scale(0.95) !important;
 }
 
 /* Active nav icon */
@@ -217,9 +199,7 @@ html[data-theme="light"] [class*="1C1C28"] svg {
 #pai-theme-toggle:hover {
   background-color: var(--sidebar-hover) !important;
   color: var(--sidebar-icon-active) !important;
-  transform: scale(1.05) !important;
 }
-#pai-theme-toggle:active { transform: scale(0.94) !important; }
 
 /* ================================================================
    CSS VARIABLE UTILITY CLASSES

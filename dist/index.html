@@ -5,17 +5,175 @@
     <link rel="icon" type="image/svg+xml" href="./vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ATUM — AI Consulting Platform</title>
-  <!-- Inter font — rendu net sur tous les écrans -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Inject API base URL from server (optional, defaults to same origin) -->
+    <!-- Inter font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- ══════════════════════════════════════════════════════════════
+         INLINE — jamais mis en cache, toujours exécuté en premier
+         ══════════════════════════════════════════════════════════════ -->
+    <style>
+      /* Masquer tous les anciens boutons injectés par les scripts cachés */
+      #pai-theme-toggle,
+      #pai-wallpaper-btn,
+      #atum-settings-btn,
+      #pai-settings-panel-btn { display: none !important; }
+
+      /* Activer le bouton Paramètres natif React (override inline style React) */
+      button[title="Parametres"] {
+        opacity: 1 !important;
+        cursor: pointer !important;
+        pointer-events: auto !important;
+      }
+    </style>
+
+    <script>
+    (function () {
+      // ── Thème appliqué immédiatement ──────────────────────────────────────
+      var saved = localStorage.getItem('pai_theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', saved);
+
+      // ── Panel Paramètres ──────────────────────────────────────────────────
+      window._paiShowSettingsPanel = function () {
+        var existing = document.getElementById('pai-settings-panel');
+        if (existing) { existing.remove(); return; }
+
+        var isDark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark';
+        var bg   = isDark ? '#1E1E2E' : '#FFFFFF';
+        var fg   = isDark ? '#EDEDED' : '#171717';
+        var muted = '#888888';
+
+        var panel = document.createElement('div');
+        panel.id = 'pai-settings-panel';
+        panel.style.cssText = [
+          'position:fixed','bottom:20px','left:70px','z-index:999999',
+          'background:' + bg,
+          'border:1px solid rgba(255,255,255,0.12)',
+          'border-radius:14px','padding:20px','width:300px',
+          'box-shadow:0 8px 32px rgba(0,0,0,0.65)',
+          'font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif',
+          'color:' + fg,
+        ].join(';');
+
+        // ── Section THÈME ───────────────────────────────────────────────────
+        var title1 = document.createElement('p');
+        title1.textContent = 'THÈME';
+        title1.style.cssText = 'margin:0 0 10px;font-size:11px;font-weight:600;letter-spacing:.8px;color:' + muted;
+        panel.appendChild(title1);
+
+        var themeRow = document.createElement('div');
+        themeRow.style.cssText = 'display:flex;gap:8px;margin-bottom:20px';
+        var curTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+
+        ['dark', 'light'].forEach(function (th) {
+          var b = document.createElement('button');
+          b.textContent = th === 'dark' ? '🌙  Sombre' : '☀️  Clair';
+          b.setAttribute('data-t', th);
+          var active = th === curTheme;
+          b.style.cssText = 'flex:1;padding:10px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:500;'
+            + 'background:' + (active ? '#14b8a6' : (isDark ? '#2A2A3C' : '#E8E8E8')) + ';'
+            + 'color:' + (active ? '#fff' : (isDark ? '#A8A8A8' : '#555'));
+          b.onclick = function () {
+            document.documentElement.setAttribute('data-theme', th);
+            localStorage.setItem('pai_theme', th);
+            var d = th === 'dark';
+            panel.querySelectorAll('[data-t]').forEach(function (x) {
+              var a = x.getAttribute('data-t') === th;
+              x.style.background = a ? '#14b8a6' : (d ? '#2A2A3C' : '#E8E8E8');
+              x.style.color = a ? '#fff' : (d ? '#A8A8A8' : '#555');
+            });
+          };
+          themeRow.appendChild(b);
+        });
+        panel.appendChild(themeRow);
+
+        // ── Section FOND D'ÉCRAN ────────────────────────────────────────────
+        if (window._paiWallpapers && window._paiWallpapers.length > 0) {
+          var title2 = document.createElement('p');
+          title2.textContent = "FOND D'ÉCRAN";
+          title2.style.cssText = 'margin:0 0 10px;font-size:11px;font-weight:600;letter-spacing:.8px;color:' + muted;
+          panel.appendChild(title2);
+
+          var grid = document.createElement('div');
+          grid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px';
+          var curWall = localStorage.getItem('pai_wallpaper') || 'ai';
+
+          window._paiWallpapers.forEach(function (w) {
+            var card = document.createElement('div');
+            card.setAttribute('data-wk', w.key);
+            card.style.cssText = 'border-radius:8px;overflow:hidden;cursor:pointer;outline:'
+              + (w.key === curWall ? '2px solid #14b8a6' : '2px solid transparent');
+            var img = document.createElement('img');
+            img.src = w.dark;
+            img.style.cssText = 'width:100%;height:56px;object-fit:cover;display:block;pointer-events:none';
+            var lbl = document.createElement('div');
+            lbl.textContent = w.label;
+            lbl.style.cssText = 'padding:4px 6px;font-size:11px;font-weight:500;text-align:center;'
+              + 'background:' + (isDark ? '#161616' : '#E0E0E0') + ';color:' + (isDark ? '#A8A8A8' : '#555');
+            card.appendChild(img);
+            card.appendChild(lbl);
+            card.onclick = function () {
+              if (window._paiApplyWallpaper) window._paiApplyWallpaper(w.key);
+              panel.querySelectorAll('[data-wk]').forEach(function (c) {
+                c.style.outline = c.getAttribute('data-wk') === w.key
+                  ? '2px solid #14b8a6' : '2px solid transparent';
+              });
+            };
+            grid.appendChild(card);
+          });
+          panel.appendChild(grid);
+        }
+
+        // ── Section CLÉ API (web uniquement) ───────────────────────────────
+        if (window._atumShowApiKeyModal) {
+          var sep = document.createElement('div');
+          sep.style.cssText = 'border-top:1px solid rgba(255,255,255,0.07);margin:4px 0 14px';
+          panel.appendChild(sep);
+          var apiBtn = document.createElement('button');
+          apiBtn.textContent = '🔑  Clé API / Modèle';
+          apiBtn.style.cssText = 'width:100%;padding:10px 12px;border-radius:8px;text-align:left;'
+            + 'border:1px solid rgba(255,255,255,0.1);background:transparent;'
+            + 'color:' + (isDark ? '#A8A8A8' : '#555') + ';cursor:pointer;font-size:13px';
+          apiBtn.onclick = function () { panel.remove(); window._atumShowApiKeyModal(); };
+          panel.appendChild(apiBtn);
+        }
+
+        // Fermer en cliquant dehors
+        setTimeout(function () {
+          document.addEventListener('click', function onOut(e) {
+            var btn = document.querySelector('button[title="Parametres"]');
+            if (!panel.contains(e.target) && (!btn || !btn.contains(e.target))) {
+              panel.remove();
+              document.removeEventListener('click', onOut);
+            }
+          });
+        }, 60);
+
+        document.body.appendChild(panel);
+      };
+
+      // ── Intercepter le clic Paramètres (capture phase) ───────────────────
+      document.addEventListener('click', function (e) {
+        var t = e.target;
+        for (var i = 0; i < 4; i++) {
+          if (!t || t.nodeType !== 1) break;
+          if (t.tagName === 'BUTTON' && t.getAttribute('title') === 'Parametres') {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            window._paiShowSettingsPanel();
+            return;
+          }
+          t = t.parentElement;
+        }
+      }, true);
+
+    })();
+    </script>
+
+    <!-- Scripts externes (wallpaper registry, Electron compat, etc.) -->
     <script>window.ATUM_API_URL = 'https://atum-backend-production.up.railway.app'</script>
-    <!-- Wallpaper theme manager -->
     <script src="./pai-wallpaper.js?v=5"></script>
-    <!-- Unified settings panel (theme + wallpaper + API key) -->
-    <script src="./pai-settings.js?v=5"></script>
-    <!-- Electron compatibility layer — must load BEFORE the React bundle -->
     <script src="./web-compat.js?v=5"></script>
     <script type="module" crossorigin src="./assets/index-DaTBon9C.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-BqYdog3h.css">

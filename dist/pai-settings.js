@@ -98,24 +98,9 @@
     document.body.appendChild(panel)
   }
 
-  // ── Activer le bouton "Parametres" existant dans la sidebar React ──────────
-  // Ce bouton est rendu par le bundle mais disabled:true (opacity:0.35, no onClick)
-  // On le réactive et on y branche notre panel unifié.
-  window._paiInjectSettingsBtn = function () {
-    var btn = document.querySelector('button[title="Parametres"]')
-    if (!btn) { setTimeout(window._paiInjectSettingsBtn, 800); return }
-    if (btn.getAttribute('data-pai-hooked')) return
-
-    // Réactiver visuellement le bouton
-    btn.style.opacity = '1'
-    btn.style.cursor = 'pointer'
-    btn.setAttribute('data-pai-hooked', '1')
-
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation()
-      window._paiShowSettingsPanel()
-    })
-  }
+  // ── Le bouton "Parametres" est activé directement dans le bundle (onClick natif)
+  // Cette fonction est appelée au démarrage mais n'a plus besoin d'ajouter de listener.
+  window._paiInjectSettingsBtn = function () { /* bundle patché — onClick natif */ }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function sectionTitle (text) {

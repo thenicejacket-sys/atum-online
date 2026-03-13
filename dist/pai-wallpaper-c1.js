@@ -73,15 +73,10 @@
       _applyBg(el, src)
       // Le conteneur lui-même : transparent pour ne pas mélanger bg-white avec l'image
       el.style.backgroundColor = src ? 'transparent' : ''
-      // Tous les enfants (header, liste, etc.) : transparents pour laisser passer le fond
+      // Tous les enfants (header, liste, etc.) : background-color transparent uniquement
+      // NE PAS toucher background shorthand — ça efface background-image !
       el.querySelectorAll('*').forEach(function (child) {
-        if (src) {
-          child.style.backgroundColor = 'transparent'
-          child.style.background      = 'transparent'
-        } else {
-          child.style.backgroundColor = ''
-          child.style.background      = ''
-        }
+        child.style.backgroundColor = src ? 'transparent' : ''
       })
     })
   }

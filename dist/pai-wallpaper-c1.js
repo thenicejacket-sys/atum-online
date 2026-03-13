@@ -19,6 +19,8 @@
       rightLight:  './assets/atum-right-bg-light.png',
       leftDark:    './assets/atum-right-bg.png',
       leftLight:   './assets/atum-right-bg-light.png',
+      centerDark:  './assets/atum-welcome-bg.png',
+      centerLight: './assets/atum-welcome-bg-light.png',
     }
     // Nouveaux thèmes ajoutés via window._paiAddWallpaper(theme)
   ]
@@ -37,28 +39,38 @@
     return btn ? btn.closest('[class*="w-[60px]"]') : null
   }
 
-  // ── Appliquer l'image de fond sur le sidebar gauche ───────────────────────
-  function _applySidebarBg (theme) {
-    var sidebar = _getSidebar()
-    if (!sidebar) return
-    if (theme && (theme.leftDark || theme.leftLight)) {
-      var isDark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark'
-      var src = isDark ? (theme.leftDark || '') : (theme.leftLight || '')
-      sidebar.style.backgroundImage = src ? 'url(' + src + ')' : ''
-      sidebar.style.backgroundSize = 'cover'
-      sidebar.style.backgroundPosition = 'center'
-      sidebar.style.backgroundRepeat = 'no-repeat'
+  // ── Appliquer une image de fond sur un élément ───────────────────────────
+  function _applyBg (el, src) {
+    if (!el) return
+    if (src) {
+      el.style.backgroundImage = 'url(' + src + ')'
+      el.style.backgroundSize = 'cover'
+      el.style.backgroundPosition = 'center'
+      el.style.backgroundRepeat = 'no-repeat'
     } else {
-      // Thème sans fond gauche → réinitialiser
-      sidebar.style.backgroundImage = ''
+      el.style.backgroundImage = ''
     }
   }
 
-  // ── Observer le changement dark/light pour mettre à jour le sidebar ───────
+  // ── Appliquer toutes les images de fond (sidebar + panneaux centraux) ─────
+  function _applyAllBg (theme) {
+    var isDark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark'
+
+    // Sidebar gauche (60px)
+    var sidebar = _getSidebar()
+    _applyBg(sidebar, theme && (isDark ? theme.leftDark : theme.leftLight))
+
+    // Panneaux centraux (w-[280px]) — agents, chats, etc.
+    document.querySelectorAll('[class*="w-[280px]"]').forEach(function (el) {
+      _applyBg(el, theme && (isDark ? theme.centerDark : theme.centerLight))
+    })
+  }
+
+  // ── Observer le changement dark/light pour mettre à jour tous les fonds ───
   new MutationObserver(function () {
     var key = localStorage.getItem('pai_wallpaper') || 'ai'
     var theme = window._paiWallpapers.find(function (w) { return w.key === key })
-    _applySidebarBg(theme || null)
+    _applyAllBg(theme || null)
   }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
 
   // ── Appliquer un thème ────────────────────────────────────────────────────
@@ -78,8 +90,8 @@
     document.querySelectorAll('.pai-right-light').forEach(function (el) {
       if (el.tagName === 'IMG') el.src = theme.rightLight
     })
-    // Fond gauche (sidebar)
-    _applySidebarBg(theme)
+    // Fonds gauche + panneaux centraux
+    _applyAllBg(theme)
     // Mettre à jour l'état actif dans le picker
     document.querySelectorAll('[data-wallpaper-key]').forEach(function (el) {
       el.setAttribute('data-active', el.getAttribute('data-wallpaper-key') === key ? '1' : '0')

@@ -577,3 +577,14 @@ html[data-wallpaper="atum"] [class*="w-[280px]"] .bg-white {
   background-color: transparent !important;
   background: transparent !important;
 }
+
+/* Conteneur 280px lui-même transparent */
+html[data-wallpaper="atum"] [class*="w-[280px]"] {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+/* Tous les descendants du panneau 280px transparents */
+html[data-wallpaper="atum"] [class*="w-[280px]"] * {
+  background-color: transparent !important;
+  background: transparent !important;
+}

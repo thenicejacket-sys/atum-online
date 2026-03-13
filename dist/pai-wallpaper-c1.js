@@ -71,10 +71,17 @@
     document.querySelectorAll('[class*="w-[280px]"]').forEach(function (el) {
       var src = theme && (isDark ? theme.centerDark : theme.centerLight)
       _applyBg(el, src)
-      // Rendre les enfants directs transparents pour laisser voir le fond
-      Array.from(el.children).forEach(function (child) {
-        child.style.backgroundColor = src ? 'transparent' : ''
-        child.style.background      = src ? 'transparent' : ''
+      // Le conteneur lui-même : transparent pour ne pas mélanger bg-white avec l'image
+      el.style.backgroundColor = src ? 'transparent' : ''
+      // Tous les enfants (header, liste, etc.) : transparents pour laisser passer le fond
+      el.querySelectorAll('*').forEach(function (child) {
+        if (src) {
+          child.style.backgroundColor = 'transparent'
+          child.style.background      = 'transparent'
+        } else {
+          child.style.backgroundColor = ''
+          child.style.background      = ''
+        }
       })
     })
   }

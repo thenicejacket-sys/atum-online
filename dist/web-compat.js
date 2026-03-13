@@ -91,6 +91,7 @@
 
       currentAbortController = new AbortController()
       const sessionId = getSessionId()
+      let accumulatedText = ''
 
       chatStreamHandlers.forEach(h => h({ type: 'start', timestamp: Date.now() }))
 
@@ -135,6 +136,7 @@
             if (!trimmed) continue
             try {
               const data = JSON.parse(trimmed)
+              if (data.type === 'stream-text' && data.data) accumulatedText += data.data
               chatStreamHandlers.forEach(h => h(data))
             } catch { /* fragment partiel, ignoré */ }
           }
@@ -144,9 +146,13 @@
         if (buffer.trim()) {
           try {
             const data = JSON.parse(buffer.trim())
+            if (data.type === 'stream-text' && data.data) accumulatedText += data.data
             chatStreamHandlers.forEach(h => h(data))
           } catch {}
         }
+
+        currentAbortController = null
+        return { success: true, content: accumulatedText }
 
       } catch (err) {
         if (err.name === 'AbortError') {
@@ -162,7 +168,7 @@
       }
 
       currentAbortController = null
-      return { success: true }
+      return { success: true, content: accumulatedText || '' }
     },
 
     // ── Streaming events ────────────────────────────────────────────────────

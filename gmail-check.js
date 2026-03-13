@@ -5,19 +5,19 @@
 // Lance UN check, répond aux emails non traités, s'arrête.
 // Variables d'environnement requises :
 //   GMAIL_TOKEN        — contenu JSON de gmail-token.json
-//   ANTHROPIC_API_KEY  — clé API Anthropic (console.anthropic.com)
+//   OPENROUTER_API_KEY — clé API OpenRouter (openrouter.ai)
 
 const fs   = require('fs')
 const path = require('path')
 
-const GMAIL_TOKEN     = JSON.parse(process.env.GMAIL_TOKEN || '{}')
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
-const AGENTS_DIR      = path.join(__dirname, 'agents')
-const LABEL_PROCESSED = 'PAI-Processed'
-const MAX_EMAILS      = 5
+const GMAIL_TOKEN      = JSON.parse(process.env.GMAIL_TOKEN || '{}')
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
+const AGENTS_DIR       = path.join(__dirname, 'agents')
+const LABEL_PROCESSED  = 'PAI-Processed'
+const MAX_EMAILS       = 5
 
-if (!ANTHROPIC_API_KEY) {
-  console.error('[Gmail] ❌ Variable ANTHROPIC_API_KEY manquante')
+if (!OPENROUTER_API_KEY) {
+  console.error('[Gmail] ❌ Variable OPENROUTER_API_KEY manquante')
   process.exit(1)
 }
 if (!GMAIL_TOKEN.refresh_token) {
@@ -111,11 +111,8 @@ function detectAgent (subject, agents) {
   return agents.find(a => lc.includes(a.name.toLowerCase())) || null
 }
 
-// ── Appel Claude via Anthropic SDK ────────────────────────────────────────
+// ── Appel Claude via OpenRouter API (fetch natif, pas de SDK) ─────────────
 async function callAgent (agent, email) {
-  const { default: Anthropic } = await import('@anthropic-ai/sdk')
-  const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY })
-
   const userMsg = `Tu as reçu un email professionnel. Réponds directement, sans commenter ta démarche.
 
 EXPÉDITEUR : ${email.from}
@@ -132,13 +129,26 @@ RÈGLES DE FORMAT ABSOLUES :
 - Phrases courtes, directes, humaines
 - Salutation naturelle + signature "${agent.name}"`
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
-    system: agent.systemPrompt,
-    messages: [{ role: 'user', content: userMsg }]
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://atum-five.vercel.app',
+      'X-Title': 'ATUM Gmail Daemon'
+    },
+    body: JSON.stringify({
+      model: 'anthropic/claude-sonnet-4-6',
+      max_tokens: 2048,
+      messages: [
+        { role: 'system', content: agent.systemPrompt },
+        { role: 'user',   content: userMsg }
+      ]
+    })
   })
-  return response.content?.[0]?.text || ''
+  const data = await res.json()
+  if (data.error) throw new Error(`OpenRouter: ${data.error.message}`)
+  return data.choices?.[0]?.message?.content || ''
 }
 
 // ── Construction de l'email MIME ──────────────────────────────────────────

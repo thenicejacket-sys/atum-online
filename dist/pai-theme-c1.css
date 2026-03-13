@@ -549,3 +549,31 @@ html[data-theme="light"] .pai-bg-light { display: block !important; }
 
 html[data-theme="light"] .pai-right-dark  { display: none  !important; }
 html[data-theme="light"] .pai-right-light { display: block !important; }
+
+/* ================================================================
+   ATUM WALLPAPER THEME — transparence totale des panneaux
+   ================================================================ */
+
+/* Panneau Assistants / Chats (280px) — enfants directs transparents */
+html[data-wallpaper="atum"] [class*="w-[280px]"] > * {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+/* Header beige #F0ECE4 → transparent */
+html[data-wallpaper="atum"] [class*="bg-[#F0ECE4]"] {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+/* Sidebar gauche (60px) — fond transparent */
+html[data-wallpaper="atum"] [class*="w-[60px]"] {
+  background-color: transparent !important;
+}
+
+/* Zones bg-white dans les panneaux ATUM */
+html[data-wallpaper="atum"] [class*="w-[280px]"] [class*="bg-white"],
+html[data-wallpaper="atum"] [class*="w-[280px]"] .bg-white {
+  background-color: transparent !important;
+  background: transparent !important;
+}

@@ -56,13 +56,26 @@
   function _applyAllBg (theme) {
     var isDark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark'
 
+    // Attribut data-wallpaper pour les règles CSS
+    if (theme && theme.key !== 'ai') {
+      document.documentElement.setAttribute('data-wallpaper', theme.key)
+    } else {
+      document.documentElement.removeAttribute('data-wallpaper')
+    }
+
     // Sidebar gauche (60px)
     var sidebar = _getSidebar()
     _applyBg(sidebar, theme && (isDark ? theme.leftDark : theme.leftLight))
 
     // Panneaux centraux (w-[280px]) — agents, chats, etc.
     document.querySelectorAll('[class*="w-[280px]"]').forEach(function (el) {
-      _applyBg(el, theme && (isDark ? theme.centerDark : theme.centerLight))
+      var src = theme && (isDark ? theme.centerDark : theme.centerLight)
+      _applyBg(el, src)
+      // Rendre les enfants directs transparents pour laisser voir le fond
+      Array.from(el.children).forEach(function (child) {
+        child.style.backgroundColor = src ? 'transparent' : ''
+        child.style.background      = src ? 'transparent' : ''
+      })
     })
   }
 

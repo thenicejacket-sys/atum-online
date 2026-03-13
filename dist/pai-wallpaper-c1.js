@@ -19,8 +19,8 @@
       rightLight:  './assets/atum-right-bg-light.png',
       leftDark:    './assets/atum-right-bg.png',
       leftLight:   './assets/atum-right-bg-light.png',
-      centerDark:  './assets/atum-welcome-bg.png',
-      centerLight: './assets/atum-welcome-bg-light.png',
+      centerDark:  './assets/atum-right-bg.png',
+      centerLight: './assets/atum-right-bg-light.png',
     }
     // Nouveaux thèmes ajoutés via window._paiAddWallpaper(theme)
   ]

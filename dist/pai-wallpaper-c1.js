@@ -73,11 +73,33 @@
       _applyBg(el, src)
       // Le conteneur lui-même : transparent pour ne pas mélanger bg-white avec l'image
       el.style.backgroundColor = src ? 'transparent' : ''
-      // Tous les enfants (header, liste, etc.) : background-color transparent uniquement
+      // Tous les enfants (liste, etc.) : background-color transparent uniquement
       // NE PAS toucher background shorthand — ça efface background-image !
       el.querySelectorAll('*').forEach(function (child) {
         child.style.backgroundColor = src ? 'transparent' : ''
       })
+    })
+
+    // Ciblage explicite du header "Assistants" light mode (classe bg-[#F0ECE4])
+    // Ce header est parfois un sibling de w-[280px], pas un enfant — besoin de ciblage direct
+    var centerSrc = theme && (isDark ? theme.centerDark : theme.centerLight)
+    document.querySelectorAll('[class*="bg-[#F0ECE4]"]').forEach(function (el) {
+      if (centerSrc) {
+        el.style.backgroundImage = 'url(' + centerSrc + ')'
+        el.style.backgroundSize = 'cover'
+        el.style.backgroundPosition = 'center'
+        el.style.backgroundRepeat = 'no-repeat'
+        el.style.backgroundColor = 'transparent'
+        el.querySelectorAll('*').forEach(function (child) {
+          child.style.backgroundColor = 'transparent'
+        })
+      } else {
+        el.style.backgroundImage = ''
+        el.style.backgroundColor = ''
+        el.querySelectorAll('*').forEach(function (child) {
+          child.style.backgroundColor = ''
+        })
+      }
     })
   }
 

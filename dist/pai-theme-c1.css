@@ -566,6 +566,14 @@ html[data-wallpaper="atum"] [class*="w-[280px]"] * {
   background-color: transparent !important;
 }
 
+/* Cibler explicitement le header light mode (classe Tailwind bg-[#F0ECE4]) */
+html[data-wallpaper="atum"] .bg-\[\#F0ECE4\] {
+  background-color: transparent !important;
+}
+html[data-wallpaper="atum"] .bg-\[\#F0ECE4\] * {
+  background-color: transparent !important;
+}
+
 /* Sidebar gauche (60px) — background-color transparent, background-image conservé */
 html[data-wallpaper="atum"] [class*="w-[60px]"] {
   background-color: transparent !important;

@@ -4,9 +4,9 @@
    ================================================================ */
 
 /* ── Smooth transitions on theme change ── */
+/* NE PAS transitioner color/border — cause vibration du texte au streaming */
 *, *::before, *::after {
-  transition: background-color 0.2s ease, color 0.15s ease,
-    border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 .no-transition, .no-transition * {
   transition: none !important;
@@ -133,6 +133,22 @@ body, #root {
     system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1, "liga" 1;
+}
+
+/* Stabiliser le rendu du texte — évite la pixellisation au streaming */
+p, span, h1, h2, h3, h4, h5, h6, div, li, td, th, label, button, input, textarea {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  transform: translateZ(0); /* Force GPU layer stable */
+  backface-visibility: hidden;
+}
+
+/* Désactiver les transforms sur boutons — cause subpixel blur */
+button:active {
+  transform: translateZ(0) scale(0.96) !important;
 }
 
 /* ================================================================
@@ -451,9 +467,6 @@ html[data-theme="light"] [class*="border-b"][class*="shrink-0"] h3 {
    ================================================================ */
 button {
   cursor: pointer;
-}
-button:active {
-  transform: scale(0.96) !important;
 }
 
 /* ================================================================

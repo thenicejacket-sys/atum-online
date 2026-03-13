@@ -9,6 +9,14 @@
       light:       './assets/pai-welcome-bg-light.png',
       rightDark:   './assets/pai-right-bg.jpg',
       rightLight:  './assets/pai-right-bg-light.png',
+    },
+    {
+      key:         'atum',
+      label:       'ATUM',
+      dark:        './assets/atum-welcome-bg.png',
+      light:       './assets/atum-welcome-bg-light.png',
+      rightDark:   './assets/atum-right-bg.png',
+      rightLight:  './assets/atum-right-bg-light.png',
     }
     // Nouveaux thèmes ajoutés via window._paiAddWallpaper(theme)
   ]

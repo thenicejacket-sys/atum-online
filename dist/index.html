@@ -34,36 +34,53 @@
       var saved = localStorage.getItem('pai_theme') || 'dark';
       document.documentElement.setAttribute('data-theme', saved);
 
-      // ── MutationObserver — supprimer immédiatement les boutons indésirables ─
+      // ── PARTIE A — Éliminer les boutons parasites de façon permanente ──────
       var _badIds = ['pai-theme-toggle','pai-wallpaper-btn','atum-settings-btn','pai-settings-panel-btn'];
-      var _cleanObs = new MutationObserver(function (muts) {
-        muts.forEach(function (m) {
-          m.addedNodes.forEach(function (node) {
-            if (node.nodeType !== 1) return;
-            _badIds.forEach(function (id) {
-              if (node.id === id) { node.remove(); return; }
-              var found = node.querySelector && node.querySelector('#' + id);
-              if (found) found.remove();
-            });
-          });
-        });
-      });
-      _cleanObs.observe(document.documentElement, { childList: true, subtree: true });
+      function _cleanBadBtns() {
+        _badIds.forEach(function(id) { var el = document.getElementById(id); if (el) el.remove(); });
+      }
+      _cleanBadBtns();
+      var _domObs = new MutationObserver(function() { _cleanBadBtns(); });
+      _domObs.observe(document.documentElement, { childList: true, subtree: true });
 
-      // ── Polling 500ms — forcer Paramètres actif + supprimer boutons parasites ─
-      setInterval(function () {
-        _badIds.forEach(function (id) {
-          var el = document.getElementById(id);
-          if (el) el.remove();
+      // ── PARTIE B — Activer le bouton Paramètres en permanence ──────────────
+      function _patchParamBtn(btn) {
+        btn.removeAttribute('disabled');
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+        btn.style.pointerEvents = 'auto';
+        // Observer UNIQUEMENT les changements d'attribut sur CE bouton
+        var obs = new MutationObserver(function() {
+          if (btn.hasAttribute('disabled') || btn.style.opacity === '0.35') {
+            btn.removeAttribute('disabled');
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
+            btn.style.pointerEvents = 'auto';
+          }
         });
+        obs.observe(btn, { attributes: true, attributeFilter: ['disabled', 'style', 'class'] });
+        // Listener click direct sur le bouton (en plus du capture sur document)
+        btn.addEventListener('click', function(e) {
+          e.stopImmediatePropagation();
+          if (window._paiShowSettingsPanel) window._paiShowSettingsPanel();
+        }, true);
+      }
+      // Appliquer dès que le bouton existe dans le DOM
+      var _btnWatchObs = new MutationObserver(function() {
         var btn = document.querySelector('button[title="Parametres"]');
-        if (btn && btn.disabled) {
-          btn.disabled = false;
-          btn.style.opacity = '1';
-          btn.style.cursor = 'pointer';
-          btn.style.pointerEvents = 'auto';
+        if (btn && !btn._paiPatched) {
+          btn._paiPatched = true;
+          _patchParamBtn(btn);
+          _btnWatchObs.disconnect();
         }
-      }, 500);
+      });
+      _btnWatchObs.observe(document.documentElement, { childList: true, subtree: true });
+      // Si déjà présent
+      var _existingBtn = document.querySelector('button[title="Parametres"]');
+      if (_existingBtn && !_existingBtn._paiPatched) {
+        _existingBtn._paiPatched = true;
+        _patchParamBtn(_existingBtn);
+      }
 
       // ── Panel Paramètres ──────────────────────────────────────────────────
       window._paiShowSettingsPanel = function () {
@@ -184,15 +201,15 @@
         document.body.appendChild(panel);
       };
 
-      // ── Intercepter le clic Paramètres (capture phase) ───────────────────
+      // ── PARTIE C — Capture listener document comme backup ─────────────────
       document.addEventListener('click', function (e) {
         var t = e.target;
-        for (var i = 0; i < 4; i++) {
+        for (var i = 0; i < 5; i++) {
           if (!t || t.nodeType !== 1) break;
           if (t.tagName === 'BUTTON' && t.getAttribute('title') === 'Parametres') {
             e.stopImmediatePropagation();
             e.preventDefault();
-            window._paiShowSettingsPanel();
+            if (window._paiShowSettingsPanel) window._paiShowSettingsPanel();
             return;
           }
           t = t.parentElement;

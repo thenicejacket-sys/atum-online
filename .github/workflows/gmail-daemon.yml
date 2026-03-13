@@ -1,0 +1,29 @@
+name: Gmail Auto-Reply Daemon
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # Toutes les 10 minutes, 24h/24
+  workflow_dispatch:           # Bouton "Run workflow" manuel sur GitHub
+
+jobs:
+  check-email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install --omit=dev
+
+      - name: Run Gmail check
+        env:
+          GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node gmail-check.js

@@ -34,6 +34,37 @@
       var saved = localStorage.getItem('pai_theme') || 'dark';
       document.documentElement.setAttribute('data-theme', saved);
 
+      // ── MutationObserver — supprimer immédiatement les boutons indésirables ─
+      var _badIds = ['pai-theme-toggle','pai-wallpaper-btn','atum-settings-btn','pai-settings-panel-btn'];
+      var _cleanObs = new MutationObserver(function (muts) {
+        muts.forEach(function (m) {
+          m.addedNodes.forEach(function (node) {
+            if (node.nodeType !== 1) return;
+            _badIds.forEach(function (id) {
+              if (node.id === id) { node.remove(); return; }
+              var found = node.querySelector && node.querySelector('#' + id);
+              if (found) found.remove();
+            });
+          });
+        });
+      });
+      _cleanObs.observe(document.documentElement, { childList: true, subtree: true });
+
+      // ── Polling 500ms — forcer Paramètres actif + supprimer boutons parasites ─
+      setInterval(function () {
+        _badIds.forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.remove();
+        });
+        var btn = document.querySelector('button[title="Parametres"]');
+        if (btn && btn.disabled) {
+          btn.disabled = false;
+          btn.style.opacity = '1';
+          btn.style.cursor = 'pointer';
+          btn.style.pointerEvents = 'auto';
+        }
+      }, 500);
+
       // ── Panel Paramètres ──────────────────────────────────────────────────
       window._paiShowSettingsPanel = function () {
         var existing = document.getElementById('pai-settings-panel');
@@ -173,11 +204,11 @@
 
     <!-- Scripts externes (wallpaper registry, Electron compat, etc.) -->
     <script>window.ATUM_API_URL = 'https://atum-backend-production.up.railway.app'</script>
-    <script src="./pai-wallpaper.js?v=5"></script>
-    <script src="./web-compat.js?v=5"></script>
+    <script src="./pai-wallpaper-c1.js"></script>
+    <script src="./web-compat-c1.js"></script>
     <script type="module" crossorigin src="./assets/index-DaTBon9C.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-BqYdog3h.css">
-    <link rel="stylesheet" href="./pai-theme.css?v=5">
+    <link rel="stylesheet" href="./pai-theme-c1.css">
   </head>
   <body>
     <div id="root"></div>

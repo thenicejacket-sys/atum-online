@@ -104,9 +104,25 @@
     document.body.appendChild(panel)
   }
 
-  // ── Le bouton "Parametres" est activé directement dans le bundle (onClick natif)
-  // Cette fonction est appelée au démarrage mais n'a plus besoin d'ajouter de listener.
-  window._paiInjectSettingsBtn = function () { /* bundle patché — onClick natif */ }
+  // ── Intercepter le clic sur le bouton Paramètres React (phase capture)
+  // Fonctionne MÊME si le bundle est en cache avec disabled:true (aucun onClick React).
+  // La CSS (pai-theme.css) rend le bouton visuellement actif.
+  window._paiInjectSettingsBtn = function () {
+    document.addEventListener('click', function (e) {
+      var t = e.target
+      // Remonter jusqu'à 3 niveaux (clic sur le SVG enfant du bouton)
+      for (var i = 0; i < 3; i++) {
+        if (!t) break
+        if (t.tagName === 'BUTTON' && t.getAttribute('title') === 'Parametres') {
+          e.stopImmediatePropagation()
+          e.preventDefault()
+          if (window._paiShowSettingsPanel) window._paiShowSettingsPanel()
+          return
+        }
+        t = t.parentElement
+      }
+    }, true) // capture: true = avant tous les handlers React
+  }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function sectionTitle (text) {

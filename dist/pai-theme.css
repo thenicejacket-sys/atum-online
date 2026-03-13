@@ -178,27 +178,21 @@ html[data-theme="light"] [class*="1C1C28"] svg {
   color: var(--sidebar-icon) !important;
 }
 
-/* ── Theme toggle button ── */
-#pai-theme-toggle {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px !important;
-  border: none !important;
-  cursor: pointer !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  background: transparent !important;
-  color: var(--sidebar-icon) !important;
-  font-size: 18px;
-  flex-shrink: 0;
-  padding: 0 !important;
-  margin-top: 8px !important;
-  outline: none !important;
+/* ── Masquer les anciens boutons injectés (cache) ── */
+#pai-theme-toggle,
+#pai-wallpaper-btn,
+#atum-settings-btn,
+#pai-settings-panel-btn {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
-#pai-theme-toggle:hover {
-  background-color: var(--sidebar-hover) !important;
-  color: var(--sidebar-icon-active) !important;
+
+/* ── Activer le bouton Paramètres natif React (sans toucher au bundle) ── */
+button[title="Parametres"] {
+  opacity: 1 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
 }
 
 /* ================================================================

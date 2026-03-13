@@ -4,6 +4,29 @@
  * Ce fichier est injecté dans index.html AVANT le bundle React.
  */
 ;(function () {
+
+  // ── Debug: afficher les erreurs JS sur l'écran au lieu de blanc ───────────
+  window.addEventListener('error', function (e) {
+    var box = document.getElementById('atum-error-box')
+    if (!box) {
+      box = document.createElement('pre')
+      box.id = 'atum-error-box'
+      box.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:20px;background:#1a0000;color:#ff6b6b;font-size:13px;z-index:999999;max-height:50vh;overflow:auto;white-space:pre-wrap;'
+      document.body.appendChild(box)
+    }
+    box.textContent += '\n[ERROR] ' + e.message + '\n  at ' + e.filename + ':' + e.lineno + ':' + e.colno
+  })
+  window.addEventListener('unhandledrejection', function (e) {
+    var box = document.getElementById('atum-error-box')
+    if (!box) {
+      box = document.createElement('pre')
+      box.id = 'atum-error-box'
+      box.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:20px;background:#1a0000;color:#ff6b6b;font-size:13px;z-index:999999;max-height:50vh;overflow:auto;white-space:pre-wrap;'
+      document.body.appendChild(box)
+    }
+    box.textContent += '\n[UNHANDLED] ' + String(e.reason)
+  })
+
   const API_BASE = window.ATUM_API_URL || ''
 
   let currentAbortController = null

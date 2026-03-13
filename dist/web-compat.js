@@ -5,6 +5,10 @@
  */
 ;(function () {
 
+  // ── Thème dark/light — appliqué AVANT le bundle React ─────────────────────
+  var savedTheme = localStorage.getItem('pai_theme') || 'dark'
+  document.documentElement.setAttribute('data-theme', savedTheme)
+
   // ── Bloquer le WebSocket PAI daemon (ws:// depuis https:) ─────────────────
   // Le daemon tourne sur le port 8765 en local Electron — inexistant en web.
   // Firefox lève SecurityError si on ouvre ws:// depuis une page https://.
@@ -357,10 +361,34 @@
     document.body.appendChild(btn)
   }
 
+  // ── Bouton toggle dark/light ───────────────────────────────────────────────
+  function injectThemeToggle() {
+    if (document.getElementById('pai-theme-toggle')) return
+    var nav = document.querySelector('[class*="w-\\[60px\\]"], [class*="flex-col"][class*="items-center"][class*="border-r"]')
+    if (!nav) { setTimeout(injectThemeToggle, 800); return }
+
+    var btn = document.createElement('button')
+    btn.id = 'pai-theme-toggle'
+    var currentTheme = document.documentElement.getAttribute('data-theme') || 'dark'
+    btn.title = currentTheme === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'
+    btn.textContent = currentTheme === 'dark' ? '☀️' : '🌙'
+
+    btn.addEventListener('click', function () {
+      var theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'
+      document.documentElement.setAttribute('data-theme', theme)
+      localStorage.setItem('pai_theme', theme)
+      btn.textContent = theme === 'dark' ? '☀️' : '🌙'
+      btn.title = theme === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'
+    })
+
+    nav.appendChild(btn)
+  }
+
   // ── Auto-prompt si pas de clé au démarrage ────────────────────────────────
   document.addEventListener('DOMContentLoaded', function () {
     setTimeout(function () {
       injectSettingsButton()
+      injectThemeToggle()
       if (!localStorage.getItem('atum_api_key')) {
         window._atumShowApiKeyModal()
       }

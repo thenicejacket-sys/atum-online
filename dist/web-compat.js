@@ -5,6 +5,24 @@
  */
 ;(function () {
 
+  // ── Bloquer le WebSocket PAI daemon (ws:// depuis https:) ─────────────────
+  // Le daemon tourne sur le port 8765 en local Electron — inexistant en web.
+  // Firefox lève SecurityError si on ouvre ws:// depuis une page https://.
+  if (location.protocol === 'https:') {
+    var _OrigWS = window.WebSocket
+    window.WebSocket = function (url, protocols) {
+      if (typeof url === 'string' && url.startsWith('ws://')) {
+        // Retourner un socket mort et silencieux
+        return { readyState: 3, send: function(){}, close: function(){}, onopen: null, onclose: null, onerror: null, onmessage: null }
+      }
+      return protocols ? new _OrigWS(url, protocols) : new _OrigWS(url)
+    }
+    window.WebSocket.CONNECTING = 0
+    window.WebSocket.OPEN = 1
+    window.WebSocket.CLOSING = 2
+    window.WebSocket.CLOSED = 3
+  }
+
   // ── Debug: afficher les erreurs JS sur l'écran au lieu de blanc ───────────
   window.addEventListener('error', function (e) {
     var box = document.getElementById('atum-error-box')

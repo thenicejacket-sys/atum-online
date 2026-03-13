@@ -17,7 +17,7 @@
   }
 
   function getModel() {
-    return localStorage.getItem('atum_model') || 'claude-sonnet-4-6'
+    return localStorage.getItem('atum_model') || 'claude-haiku-4-5-20251001'
   }
 
   function getSessionId() {
@@ -237,8 +237,8 @@
       <select id="atum-model-select"
         style="width:100%;box-sizing:border-box;background:#2A2A3C;border:1px solid #444;border-radius:6px;
                padding:10px 12px;color:#F0ECE4;font-size:13px;margin-bottom:24px;outline:none;cursor:pointer;">
-        <option value="claude-sonnet-4-6" ${currentModel === 'claude-sonnet-4-6' ? 'selected' : ''}>Sonnet 4.6 — Recommandé</option>
-        <option value="claude-haiku-4-5-20251001" ${currentModel === 'claude-haiku-4-5-20251001' ? 'selected' : ''}>Haiku 4.5 — Rapide &amp; économique</option>
+        <option value="claude-haiku-4-5-20251001" ${currentModel === 'claude-haiku-4-5-20251001' ? 'selected' : ''}>Haiku 4.5 — Défaut (rapide, économique)</option>
+        <option value="claude-sonnet-4-6" ${currentModel === 'claude-sonnet-4-6' ? 'selected' : ''}>Sonnet 4.6 — Analyses complexes</option>
       </select>
 
       <div style="display:flex;gap:10px;">

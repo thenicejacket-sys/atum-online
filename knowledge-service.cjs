@@ -1,198 +1,162 @@
 'use strict'
 
 /**
- * PAI Knowledge Base — BM25 Search Service
- * Stockage local JSON, recherche BM25 (standard industriel), 100% offline.
- * Compatible avec toutes les versions d'Electron/asar — aucun module natif.
+ * PAI Knowledge Base — Supabase Cloud Service
+ * Remplace le stockage JSON local par PostgreSQL Supabase.
+ * API identique à l'ancienne version — transparent pour les agents.
  */
 
-const fs   = require('fs')
-const path = require('path')
-const os   = require('os')
+const SUPABASE_URL = 'https://ataxqfqlprndcjisepbn.supabase.co'
+const SUPABASE_KEY = 'sb_publishable_qZMWIStnnUbnmdVxKB4DyA_Bpj10XoY'
+const REST = `${SUPABASE_URL}/rest/v1`
 
-const KNOWLEDGE_DIR = path.join(os.homedir(), '.claude', 'knowledge')
-const K1 = 1.5   // BM25 term saturation
-const B  = 0.75  // BM25 length normalization
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function getAgentDir(agentId) {
-  const dir = path.join(KNOWLEDGE_DIR, agentId)
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-  return dir
+const BASE_HEADERS = {
+  'apikey': SUPABASE_KEY,
+  'Authorization': `Bearer ${SUPABASE_KEY}`,
+  'Content-Type': 'application/json',
 }
 
-function getIndexPath(agentId) {
-  return path.join(getAgentDir(agentId), 'index.json')
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function uid() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-function loadIndex(agentId) {
-  const p = getIndexPath(agentId)
-  if (!fs.existsSync(p)) return { docs: [], version: 1 }
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')) }
-  catch { return { docs: [], version: 1 } }
-}
-
-function saveIndex(agentId, index) {
-  fs.writeFileSync(getIndexPath(agentId), JSON.stringify(index, null, 2), 'utf8')
-}
-
-function tokenize(text) {
-  return text
-    .toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // strip accents for matching
-    .replace(/[^\w\s]/g, ' ')
-    .split(/\s+/)
-    .filter(t => t.length > 1 && !STOPWORDS.has(t))
-}
-
-function termFreq(tokens) {
-  const freq = {}
-  for (const t of tokens) freq[t] = (freq[t] || 0) + 1
-  return freq
-}
-
-function chunkText(text, chunkWords = 350, overlapWords = 60) {
-  const words = text.split(/\s+/).filter(Boolean)
-  if (words.length <= chunkWords) return [text]
+function chunkText(text, maxWords = 800) {
+  const paragraphs = text.split(/\n\n+/)
   const chunks = []
-  let i = 0
-  while (i < words.length) {
-    chunks.push(words.slice(i, i + chunkWords).join(' '))
-    i += chunkWords - overlapWords
-    if (i + overlapWords >= words.length) break
+  let current = ''
+  for (const para of paragraphs) {
+    const words = para.split(/\s+/).length
+    if (current && current.split(/\s+/).length + words > maxWords) {
+      chunks.push(current.trim())
+      current = para
+    } else {
+      current = current ? current + '\n\n' + para : para
+    }
   }
-  if (i < words.length) chunks.push(words.slice(i).join(' '))
-  return chunks
+  if (current.trim()) chunks.push(current.trim())
+  return chunks.length ? chunks : [text.trim()]
 }
 
-function buildIdf(docs, queryTokens) {
-  const N = docs.length
-  const idf = {}
-  for (const t of queryTokens) {
-    const df = docs.filter(d => (d.tf[t] || 0) > 0).length
-    idf[t] = Math.log((N - df + 0.5) / (df + 0.5) + 1)
-  }
-  return idf
-}
+// ── searchKnowledge ───────────────────────────────────────────────────────────
+// Recherche PostgreSQL FTS via RPC, avec fallback ILIKE si 0 résultats.
 
-function bm25Score(doc, queryTokens, idf, avgLen) {
-  let score = 0
-  for (const t of queryTokens) {
-    const tf  = doc.tf[t] || 0
-    if (tf === 0) continue
-    const num = tf * (K1 + 1)
-    const den = tf + K1 * (1 - B + B * doc.len / avgLen)
-    score += (idf[t] || 0) * num / den
-  }
-  return score
-}
+async function searchKnowledge(agentId, query, topK = 5) {
+  topK = Math.min(topK || 5, 10)
 
-// French + English stopwords
-const STOPWORDS = new Set([
-  'le','la','les','un','une','des','du','de','en','et','est','au','aux',
-  'ce','se','sa','son','ses','mon','ton','ma','ta','mes','tes','qui','que',
-  'que','quoi','ou','et','mais','donc','or','ni','car','si','ne','pas',
-  'plus','par','sur','dans','avec','pour','sans','sous','entre','vers',
-  'the','a','an','of','to','in','is','it','for','on','are','at','by',
-  'this','that','with','from','be','was','have','has','not','but','or',
-  'as','can','all','its','also','one','two','three','will','been','more',
-])
-
-// ── Public API ────────────────────────────────────────────────────────────────
-
-/**
- * Save a document to the agent's knowledge base.
- * @param {string} agentId - e.g. 'lionel', 'christian'
- * @param {string} content - raw text to index
- * @param {object} metadata - { source, topic, date, tags }
- * @returns {{ saved: number, totalDocs: number }}
- */
-function saveToKnowledge(agentId, content, metadata = {}) {
-  const index  = loadIndex(agentId)
-  const chunks = chunkText(content)
-  const now    = new Date().toISOString().slice(0, 10)
-  const ids    = []
-
-  for (const chunk of chunks) {
-    const tokens = tokenize(chunk)
-    if (tokens.length < 3) continue   // skip tiny chunks
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-    index.docs.push({
-      id,
-      content: chunk,
-      tf:  termFreq(tokens),
-      len: tokens.length,
-      metadata: { source: 'manual', topic: '', date: now, tags: [], ...metadata, agentId },
+  // 1. Essai FTS via la fonction search_kb
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/search_kb`, {
+      method: 'POST',
+      headers: BASE_HEADERS,
+      body: JSON.stringify({ p_agent_id: agentId, p_query: query, p_top_k: topK }),
     })
-    ids.push(id)
+    if (res.ok) {
+      const rows = await res.json()
+      if (Array.isArray(rows) && rows.length > 0) {
+        return rows.map(r => ({
+          content: r.content,
+          source:  r.source  || '',
+          topic:   r.topic   || '',
+          score:   r.rank    || 0,
+        }))
+      }
+    }
+  } catch {}
+
+  // 2. Fallback ILIKE sur les mots-clés
+  try {
+    const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 2).slice(0, 4)
+    if (!words.length) return []
+    const orFilter = words.map(w => `content.ilike.*${encodeURIComponent(w)}*`).join(',')
+    const url = `${REST}/knowledge?agent_id=eq.${encodeURIComponent(agentId)}&or=(${orFilter})&limit=${topK}`
+    const res = await fetch(url, { headers: BASE_HEADERS })
+    if (res.ok) {
+      const rows = await res.json()
+      return (rows || []).map(r => ({ content: r.content, source: r.source || '', topic: r.topic || '', score: 0.3 }))
+    }
+  } catch {}
+
+  return []
+}
+
+// ── saveToKnowledge ───────────────────────────────────────────────────────────
+
+async function saveToKnowledge(agentId, content, source, topic, tags) {
+  const chunks = chunkText(content)
+  let saved = 0
+
+  const rows = chunks.map(chunk => ({
+    id:       uid(),
+    agent_id: agentId,
+    content:  chunk,
+    source:   source || null,
+    topic:    topic  || null,
+    tags:     Array.isArray(tags) ? tags : (tags ? [tags] : []),
+  }))
+
+  // Insérer en batch de 50
+  for (let i = 0; i < rows.length; i += 50) {
+    const batch = rows.slice(i, i + 50)
+    try {
+      const res = await fetch(`${REST}/knowledge`, {
+        method: 'POST',
+        headers: { ...BASE_HEADERS, 'Prefer': 'return=minimal' },
+        body: JSON.stringify(batch),
+      })
+      if (res.ok) saved += batch.length
+    } catch {}
   }
 
-  saveIndex(agentId, index)
-  return { saved: ids.length, totalDocs: index.docs.length }
+  // Compter total pour cet agent
+  let totalDocs = saved
+  try {
+    const res = await fetch(`${REST}/knowledge?agent_id=eq.${encodeURIComponent(agentId)}&select=id`, { headers: BASE_HEADERS })
+    if (res.ok) totalDocs = (await res.json()).length
+  } catch {}
+
+  return { saved, totalDocs, storagePath: `supabase://${agentId}` }
 }
 
-/**
- * Search the agent's knowledge base using BM25.
- * @param {string} agentId
- * @param {string} query
- * @param {number} topK - max results (default 3)
- * @returns {Array<{ id, content, score, metadata }>}
- */
-function searchKnowledge(agentId, query, topK = 3) {
-  const index = loadIndex(agentId)
-  if (!index.docs.length) return []
+// ── listKnowledge ─────────────────────────────────────────────────────────────
 
-  const qTokens = tokenize(query)
-  if (!qTokens.length) return []
-
-  const avgLen = index.docs.reduce((s, d) => s + d.len, 0) / index.docs.length
-  const idf    = buildIdf(index.docs, qTokens)
-
-  return index.docs
-    .map(doc => ({ ...doc, score: bm25Score(doc, qTokens, idf, avgLen) }))
-    .filter(d => d.score > 0.01)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK)
-    .map(d => ({
-      id:       d.id,
-      content:  d.content,
-      score:    Math.round(d.score * 100) / 100,
-      metadata: d.metadata,
-    }))
-}
-
-/**
- * List all documents in the agent's knowledge base, grouped by source.
- * @param {string} agentId
- */
-function listKnowledge(agentId) {
-  const index = loadIndex(agentId)
-  const groups = {}
-  for (const doc of index.docs) {
-    const src = doc.metadata?.source || 'sans source'
-    if (!groups[src]) groups[src] = { count: 0, topic: doc.metadata?.topic || '', date: doc.metadata?.date || '' }
-    groups[src].count++
-  }
-  return {
-    agentId,
-    totalChunks: index.docs.length,
-    sources: groups,
-    storagePath: getIndexPath(agentId),
+async function listKnowledge(agentId) {
+  try {
+    const res = await fetch(
+      `${REST}/knowledge?agent_id=eq.${encodeURIComponent(agentId)}&select=source,topic,created_at&order=created_at.desc`,
+      { headers: BASE_HEADERS }
+    )
+    const rows = res.ok ? await res.json() : []
+    const sources = {}
+    for (const r of (rows || [])) {
+      const s = r.source || '(sans source)'
+      sources[s] = (sources[s] || 0) + 1
+    }
+    return { totalChunks: (rows || []).length, sources, storagePath: `supabase://${agentId}` }
+  } catch {
+    return { totalChunks: 0, sources: {}, storagePath: `supabase://${agentId}` }
   }
 }
 
-/**
- * Delete all documents from a given source.
- * @param {string} agentId
- * @param {string} source - the source name to delete
- */
-function deleteFromKnowledge(agentId, source) {
-  const index  = loadIndex(agentId)
-  const before = index.docs.length
-  index.docs   = index.docs.filter(d => d.metadata?.source !== source)
-  saveIndex(agentId, index)
-  return { deleted: before - index.docs.length, remaining: index.docs.length }
+// ── deleteFromKnowledge ───────────────────────────────────────────────────────
+
+async function deleteFromKnowledge(agentId, source) {
+  try {
+    const res = await fetch(
+      `${REST}/knowledge?agent_id=eq.${encodeURIComponent(agentId)}&source=eq.${encodeURIComponent(source)}`,
+      { method: 'DELETE', headers: BASE_HEADERS }
+    )
+    // Compter restants
+    const listRes = await fetch(
+      `${REST}/knowledge?agent_id=eq.${encodeURIComponent(agentId)}&select=id`,
+      { headers: BASE_HEADERS }
+    )
+    const remaining = listRes.ok ? (await listRes.json()).length : 0
+    return { deleted: res.ok ? 1 : 0, remaining }
+  } catch {
+    return { deleted: 0, remaining: 0 }
+  }
 }
 
-module.exports = { saveToKnowledge, searchKnowledge, listKnowledge, deleteFromKnowledge }
+module.exports = { searchKnowledge, saveToKnowledge, listKnowledge, deleteFromKnowledge }

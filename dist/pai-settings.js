@@ -90,6 +90,53 @@
       panel.appendChild(apiBtn)
     }
 
+    // ── SECTION Mail actif ─────────────────────────────────────────────────
+    var sep3 = document.createElement('div')
+    sep3.style.cssText = 'border-top:1px solid var(--color-border,rgba(255,255,255,0.07));margin:4px 0 14px'
+    panel.appendChild(sep3)
+    panel.appendChild(sectionTitle('Mail actif'))
+
+    var mailRow = document.createElement('div')
+    mailRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:4px'
+
+    var mailLabel = document.createElement('span')
+    mailLabel.textContent = 'Réponses email automatiques'
+    mailLabel.style.cssText = 'font-size:13px;color:var(--color-foreground-secondary,#A8A8A8)'
+
+    var mailToggle = document.createElement('button')
+    mailToggle.style.cssText = 'width:44px;height:24px;border-radius:12px;border:none;cursor:pointer;position:relative;flex-shrink:0;transition:background .2s;background:#444'
+    var mailDot = document.createElement('span')
+    mailDot.style.cssText = 'position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s'
+    mailToggle.appendChild(mailDot)
+
+    mailRow.appendChild(mailLabel)
+    mailRow.appendChild(mailToggle)
+    panel.appendChild(mailRow)
+
+    var mailEnabled = false
+    function setMailState (val) {
+      mailEnabled = val
+      mailToggle.style.background = val ? '#14b8a6' : '#444'
+      mailDot.style.transform = val ? 'translateX(20px)' : 'translateX(0)'
+    }
+
+    // Charger l'état depuis l'API ou Electron
+    if (window.electronAPI && window.electronAPI.isElectron) {
+      window.electronAPI.getGmailConfig().then(function (cfg) { setMailState(!!cfg?.enabled) }).catch(function () {})
+    } else {
+      fetch('/api/gmail-config').then(function (r) { return r.json() }).then(function (cfg) { setMailState(!!cfg?.enabled) }).catch(function () {})
+    }
+
+    mailToggle.addEventListener('click', function () {
+      var newVal = !mailEnabled
+      setMailState(newVal)
+      if (window.electronAPI && window.electronAPI.isElectron) {
+        window.electronAPI.setGmailActive(newVal)
+      } else {
+        fetch('/api/gmail-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: newVal }) }).catch(function () {})
+      }
+    })
+
     // Fermer en cliquant dehors
     setTimeout(function () {
       document.addEventListener('click', function onOut (e) {

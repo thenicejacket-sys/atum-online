@@ -87,7 +87,7 @@
     // Fermer en cliquant dehors
     setTimeout(function () {
       document.addEventListener('click', function onOut (e) {
-        var btn = document.getElementById('pai-settings-panel-btn')
+        var btn = document.querySelector('button[title="Parametres"]')
         if (!panel.contains(e.target) && (!btn || !btn.contains(e.target))) {
           panel.remove()
           document.removeEventListener('click', onOut)
@@ -98,34 +98,23 @@
     document.body.appendChild(panel)
   }
 
-  // ── Injecter le bouton ⚙ dans la sidebar ─────────────────────────────────
+  // ── Activer le bouton "Parametres" existant dans la sidebar React ──────────
+  // Ce bouton est rendu par le bundle mais disabled:true (opacity:0.35, no onClick)
+  // On le réactive et on y branche notre panel unifié.
   window._paiInjectSettingsBtn = function () {
-    if (document.getElementById('pai-settings-panel-btn')) return
-    var sidebar = document.querySelector('[class*="w-\\[60px\\]"]')
-      || document.querySelector('[class*="#1C1C28"]')
-    if (!sidebar) { setTimeout(window._paiInjectSettingsBtn, 800); return }
+    var btn = document.querySelector('button[title="Parametres"]')
+    if (!btn) { setTimeout(window._paiInjectSettingsBtn, 800); return }
+    if (btn.getAttribute('data-pai-hooked')) return
 
-    var btn = document.createElement('button')
-    btn.id = 'pai-settings-panel-btn'
-    btn.title = 'Paramètres (thème, fond d\'écran)'
-    btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
-    btn.style.cssText = [
-      'width:40px','height:40px','border-radius:12px','border:none',
-      'background:transparent','color:var(--sidebar-icon,#888)',
-      'cursor:pointer','display:flex','align-items:center','justify-content:center',
-      'flex-shrink:0','padding:0','margin-top:4px','outline:none',
-    ].join(';')
-    btn.addEventListener('mouseenter', function () {
-      btn.style.background = 'var(--sidebar-hover,rgba(255,255,255,0.06))'
-    })
-    btn.addEventListener('mouseleave', function () {
-      btn.style.background = 'transparent'
-    })
+    // Réactiver visuellement le bouton
+    btn.style.opacity = '1'
+    btn.style.cursor = 'pointer'
+    btn.setAttribute('data-pai-hooked', '1')
+
     btn.addEventListener('click', function (e) {
       e.stopPropagation()
       window._paiShowSettingsPanel()
     })
-    sidebar.appendChild(btn)
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────

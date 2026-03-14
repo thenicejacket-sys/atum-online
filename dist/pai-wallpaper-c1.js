@@ -107,25 +107,34 @@
       styleEl.id = '_pai-wp-css'
       document.head.appendChild(styleEl)
     }
-    if (theme && theme.key !== 'ai' && centerSrc) {
-      var sel = 'html[data-wallpaper="' + theme.key + '"]'
-      var img = 'url(' + centerSrc + ')'
+    if (theme && theme.key !== 'ai' && theme.centerDark) {
+      var k = theme.key
+      var iD = 'url(' + theme.centerDark + ')'
+      var iL = 'url(' + (theme.centerLight || theme.centerDark) + ')'
+      // Sélecteurs dark / light / fallback (sans data-theme = dark par défaut)
+      var sd = 'html[data-wallpaper="' + k + '"][data-theme="dark"]'
+      var sl = 'html[data-wallpaper="' + k + '"][data-theme="light"]'
+      var sf = 'html[data-wallpaper="' + k + '"]:not([data-theme="light"])'
       styleEl.textContent = [
-        // Centre (bg-[#F5F6FA]) : wallpaper + transparent
-        sel + ' [class*="bg-[#F5F6FA]"] {',
-        '  background-image: ' + img + ' !important;',
-        '  background-color: transparent !important; }',
-        // Direct children du centre → transparent pour laisser passer le wallpaper
-        sel + ' [class*="bg-[#F5F6FA]"] > * {',
-        '  background-color: transparent !important; }',
-        // Panneau droit (w-[300px]) : wallpaper + transparent
-        sel + ' [class*="w-[300px]"] {',
-        '  background-image: ' + img + ' !important;',
-        '  background-color: transparent !important; }',
-        // Direct children du panneau droit → transparent
-        sel + ' [class*="w-[300px]"] > * {',
-        '  background-color: transparent !important; }',
-        // Console (bg-[#192a2a]) garde son fond sombre — Tailwind sans !important suffit
+        // ── DARK ─────────────────────────────────────────────────────────────
+        // Centre
+        sd + ' [class*="bg-[#F5F6FA]"] { background-image:' + iD + ' !important; background-color:transparent !important; }',
+        sd + ' [class*="bg-[#F5F6FA]"] > * { background-color:transparent !important; }',
+        // Panneau droit — * pour atteindre les wrappers bg-white imbriqués
+        sd + ' [class*="w-[300px]"] { background-image:' + iD + ' !important; background-color:transparent !important; }',
+        sd + ' [class*="w-[300px]"] * { background-color:transparent !important; }',
+        // ── LIGHT ────────────────────────────────────────────────────────────
+        sl + ' [class*="bg-[#F5F6FA]"] { background-image:' + iL + ' !important; background-color:transparent !important; }',
+        sl + ' [class*="bg-[#F5F6FA]"] > * { background-color:transparent !important; }',
+        sl + ' [class*="w-[300px]"] { background-image:' + iL + ' !important; background-color:transparent !important; }',
+        sl + ' [class*="w-[300px]"] * { background-color:transparent !important; }',
+        // ── FALLBACK (data-theme absent = dark) ───────────────────────────────
+        sf + ' [class*="bg-[#F5F6FA]"] { background-image:' + iD + ' !important; background-color:transparent !important; }',
+        sf + ' [class*="bg-[#F5F6FA]"] > * { background-color:transparent !important; }',
+        sf + ' [class*="w-[300px]"] { background-image:' + iD + ' !important; background-color:transparent !important; }',
+        sf + ' [class*="w-[300px]"] * { background-color:transparent !important; }',
+        // ── Console exclusion (tous modes) ────────────────────────────────────
+        'html[data-wallpaper="' + k + '"] [class*="bg-[#192a2a]"] { background-color:#192a2a !important; }',
       ].join('\n')
     } else {
       styleEl.textContent = ''

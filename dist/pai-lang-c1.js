@@ -61,7 +61,7 @@
     'Assistants Perso':      'Personal Assistants',
     'Assistants Pro':        'Pro Assistants',
     'Assistants Comptables': 'Accounting Assistants',
-    'Assistants Compta':     'Account Assistants',
+    'Assistants Compta':     'Accounts Assistants',
     'Consultant IA ATUM':    'ATUM AI Consultants',
 
     // ── Descriptions courtes des agents (sous le nom) ──────────────────

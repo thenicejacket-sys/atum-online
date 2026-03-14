@@ -7,8 +7,9 @@
 //   GMAIL_TOKEN        — contenu JSON de gmail-token.json
 //   OPENROUTER_API_KEY — clé API OpenRouter (openrouter.ai)
 
-const fs   = require('fs')
-const path = require('path')
+const fs       = require('fs')
+const path     = require('path')
+const pdfParse = require('pdf-parse')
 
 const GMAIL_TOKEN        = JSON.parse(process.env.GMAIL_TOKEN || '{}')
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
@@ -123,9 +124,13 @@ async function extractPdfAttachments (payload, msgId, token) {
         raw = att.data
       }
       if (raw) {
-        // Gmail retourne du base64url → convertir en base64 standard
-        const base64 = Buffer.from(raw, 'base64url').toString('base64')
-        results.push({ filename: part.filename || 'attachment.pdf', data: base64 })
+        const buffer = Buffer.from(raw, 'base64url')
+        try {
+          const parsed = await pdfParse(buffer)
+          results.push({ filename: part.filename || 'attachment.pdf', text: parsed.text.trim() })
+        } catch (pe) {
+          console.error(`[Gmail] ❌ Erreur parsing PDF ${part.filename} : ${pe.message}`)
+        }
       }
     } catch (e) {
       console.error(`[Gmail] ❌ Erreur extraction PDF ${part.filename} : ${e.message}`)
@@ -202,20 +207,13 @@ RÈGLES DE FORMAT ABSOLUES :
 - Phrases courtes, directes, humaines
 - Salutation naturelle + signature "${agent.name}"`
 
-  // Si des PDFs sont présents → contenu multimodal (documents + texte)
-  let userContent
+  // Si des PDFs sont présents → injecter le texte extrait dans le message
+  let userContent = textMsg
   if (pdfs.length > 0) {
-    userContent = []
-    for (const pdf of pdfs) {
-      userContent.push({
-        type: 'document',
-        source: { type: 'base64', media_type: 'application/pdf', data: pdf.data },
-        title: pdf.filename
-      })
-    }
-    userContent.push({ type: 'text', text: textMsg })
-  } else {
-    userContent = textMsg
+    const pdfBlocks = pdfs.map(p =>
+      `\n\n[PIÈCE JOINTE PDF — ${p.filename}]\n${p.text}`
+    ).join('\n')
+    userContent = textMsg + pdfBlocks
   }
 
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {

@@ -18,6 +18,21 @@ const LABEL_PROCESSED    = 'PAI-Processed'
 const LABEL_SEEN         = 'PAI-Seen'
 const MAX_EMAILS         = 5
 
+// ── Supabase — tracking des interactions agents ────────────────────────────
+const _SUPA_URL = 'https://ataxqfqlprndcjisepbn.supabase.co'
+const _SUPA_KEY = 'sb_publishable_qZMWIStnnUbnmdVxKB4DyA_Bpj10XoY'
+function recordAgentUsage (agentId, agentName) {
+  if (!agentId) return
+  fetch(_SUPA_URL + '/rest/v1/agent_usage', {
+    method: 'POST',
+    headers: {
+      'apikey': _SUPA_KEY, 'Authorization': 'Bearer ' + _SUPA_KEY,
+      'Content-Type': 'application/json', 'Prefer': 'return=minimal',
+    },
+    body: JSON.stringify({ agent_id: agentId, agent_name: agentName || agentId }),
+  }).catch(() => {})
+}
+
 if (!OPENROUTER_API_KEY) {
   console.error('[Gmail] ❌ Variable OPENROUTER_API_KEY manquante')
   process.exit(1)
@@ -124,7 +139,7 @@ function loadAgents () {
           const raw = fs.readFileSync(path.join(AGENTS_DIR, f), 'utf8')
           systemPrompt = raw.replace(/^---[\s\S]*?---\n/, '').trim()
         } catch {}
-        return { name, systemPrompt }
+        return { id: base.toLowerCase(), name, systemPrompt }
       })
   } catch { return [] }
 }
@@ -248,6 +263,7 @@ async function main () {
 
       await gmailPost('/users/me/messages/send', token, { raw, threadId: full.threadId })
       console.log(`[Gmail] ✅ Réponse envoyée à ${from} par ${agent.name}`)
+      recordAgentUsage(agent.id, agent.name)
       // Label visible PAI-Processed + label caché PAI-Seen
       await gmailPost(`/users/me/messages/${msg.id}/modify`, token, { addLabelIds: [labelId, labelSeenId] })
 

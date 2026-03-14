@@ -1414,7 +1414,7 @@ function loadCustomAgentsGmail () {
         const raw = fs.readFileSync(path.join(CUSTOM_AGENTS_DIR, f), 'utf8')
         systemPrompt = raw.replace(/^---[\s\S]*?---\n/, '').trim()
       } catch {}
-      return { name, file: f, systemPrompt }
+      return { id: base.toLowerCase(), name, file: f, systemPrompt }
     })
   } catch { return [] }
 }
@@ -1567,6 +1567,7 @@ async function checkNewGmailEmailsWeb () {
         } else {
           await gmailPostReq('/users/me/messages/send', token, { raw: rawEmail, threadId: full.threadId })
           console.log(`[Gmail] Email envoye automatiquement a : ${from} par ${agent.name}`)
+          recordAgentUsage(agent.id || agent.name.toLowerCase())
         }
         await gmailPostReq(`/users/me/messages/${msg.id}/modify`, token, { addLabelIds: [labelId] })
       } catch (emailErr) {

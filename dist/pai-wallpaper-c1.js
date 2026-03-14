@@ -237,7 +237,22 @@
       _reapplyTimer = setTimeout(function () {
         var k = localStorage.getItem('pai_wallpaper') || 'atum'
         var t = window._paiWallpapers.find(function (w) { return w.key === k })
-        if (t) _applyAllBg(t)
+        if (t) {
+          // Mettre à jour les <img> src React recréés lors des navigations chat↔agents
+          document.querySelectorAll('.pai-bg-dark').forEach(function (el) {
+            if (el.tagName === 'IMG') el.src = t.dark
+          })
+          document.querySelectorAll('.pai-bg-light').forEach(function (el) {
+            if (el.tagName === 'IMG') el.src = t.light
+          })
+          document.querySelectorAll('.pai-right-dark').forEach(function (el) {
+            if (el.tagName === 'IMG') el.src = t.rightDark
+          })
+          document.querySelectorAll('.pai-right-light').forEach(function (el) {
+            if (el.tagName === 'IMG') el.src = t.rightLight
+          })
+          _applyAllBg(t)
+        }
       }, 200)
     })
 

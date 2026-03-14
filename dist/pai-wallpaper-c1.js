@@ -52,7 +52,7 @@
     }
   }
 
-  // ── Appliquer toutes les images de fond (sidebar + panneaux centraux) ─────
+  // ── Appliquer toutes les images de fond (sidebar + tous les panneaux) ─────
   function _applyAllBg (theme) {
     var isDark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark'
 
@@ -67,22 +67,37 @@
     var sidebar = _getSidebar()
     _applyBg(sidebar, theme && (isDark ? theme.leftDark : theme.leftLight))
 
-    // Panneaux centraux (w-[280px]) — agents, chats, etc.
-    document.querySelectorAll('[class*="w-[280px]"]').forEach(function (el) {
-      var src = theme && (isDark ? theme.centerDark : theme.centerLight)
+    var centerSrc = theme && (isDark ? theme.centerDark : theme.centerLight)
+
+    // Helper : applique fond sur un panneau, rend les enfants transparents
+    // sauf les zones console (bg sombre #192a2a) — elles gardent leur propre fond
+    function _applyPanel (el, src) {
+      if (!el) return
       _applyBg(el, src)
-      // Le conteneur lui-même : transparent pour ne pas mélanger bg-white avec l'image
       el.style.backgroundColor = src ? 'transparent' : ''
-      // Tous les enfants (liste, etc.) : background-color transparent uniquement
-      // NE PAS toucher background shorthand — ça efface background-image !
       el.querySelectorAll('*').forEach(function (child) {
+        var cls = (typeof child.className === 'string') ? child.className : ''
+        if (cls.indexOf('bg-[#192a2a]') >= 0) return  // console → ne pas rendre transparent
         child.style.backgroundColor = src ? 'transparent' : ''
       })
+    }
+
+    // Panneau liste gauche (w-[280px]) — agents, chats, etc.
+    document.querySelectorAll('[class*="w-[280px]"]').forEach(function (el) {
+      _applyPanel(el, centerSrc)
     })
 
-    // Ciblage explicite du header "Assistants" light mode (classe bg-[#F0ECE4])
-    // Ce header est parfois un sibling de w-[280px], pas un enfant — besoin de ciblage direct
-    var centerSrc = theme && (isDark ? theme.centerDark : theme.centerLight)
+    // Panneau centre principal (bg-[#F5F6FA])
+    document.querySelectorAll('[class*="bg-[#F5F6FA]"]').forEach(function (el) {
+      _applyPanel(el, centerSrc)
+    })
+
+    // Panneau droit info agent (w-[300px])
+    document.querySelectorAll('[class*="w-[300px]"]').forEach(function (el) {
+      _applyPanel(el, centerSrc)
+    })
+
+    // Ciblage explicite des headers bg-[#F0ECE4] (light mode)
     document.querySelectorAll('[class*="bg-[#F0ECE4]"]').forEach(function (el) {
       if (centerSrc) {
         el.style.backgroundImage = 'url(' + centerSrc + ')'

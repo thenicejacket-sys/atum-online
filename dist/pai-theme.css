@@ -268,10 +268,9 @@ html[data-theme="dark"] [class*="#0d1117"] {
   color: var(--bubble-agent-text) !important;
   box-shadow: var(--bubble-shadow) !important;
 }
-/* Renforcement dark mode — spécificité maximale */
-html[data-theme="dark"] [class*="rounded-2xl"][class*="bg-white"],
-html[data-theme="dark"] [class*="rounded-tl-sm"][class*="bg-white"],
-html[data-theme="dark"] [class*="rounded-tr-sm"][class*="bg-white"] {
+/* Renforcement dark mode — spécificité (0,4,0) bat le sélecteur topbar [border-b] qui match border-border */
+html[data-theme="dark"] [class*="rounded-2xl"][class*="rounded-tl-sm"][class*="bg-white"],
+html[data-theme="dark"] [class*="rounded-2xl"][class*="rounded-tr-sm"][class*="bg-white"] {
   background-color: #2563EB !important;
   color: #ffffff !important;
 }

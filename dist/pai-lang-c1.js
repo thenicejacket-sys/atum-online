@@ -399,6 +399,9 @@
 
   window._paiGetLang = function () { return _lang }
 
+  // ── Expose la map pour le patch _pShowTip dans le bundle ─────────────
+  window._paiTransMap = _t
+
   // ── Observer DOM — réapplique la traduction après chaque re-render React
   var _obs = new MutationObserver(function (muts) {
     if (_busy || _lang !== 'en') return

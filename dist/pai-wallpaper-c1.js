@@ -103,9 +103,40 @@
       }
     })
 
-    // ── Injection CSS haute-spécificité pour centre + panneau droit ───────────
-    // Le CSS pai-theme-c1.css utilise !important sur bg-[#F5F6FA] et bg-white.
-    // Pour gagner, on injecte une règle avec spécificité plus haute (html[attr][attr] > 1 attr).
+    // ── Panneau droit : vraies classes React (border-l border-border flex-col) ─
+    // Le panneau Agent a un inline style React `background: white` (shorthand).
+    // On le vide via JS + on applique le fond. CSS injection ci-dessous prend
+    // ensuite le relais de façon persistante même après les re-renders React.
+    var rp = '[class*="border-l"][class*="border-border"][class*="flex-col"]'
+    document.querySelectorAll(rp).forEach(function (el) {
+      if (centerSrc) {
+        el.style.background = ''            // efface le shorthand React
+        _applyBg(el, centerSrc)             // backgroundImage + size + position
+        el.style.backgroundColor = 'transparent'
+        var contentArea = el.lastElementChild
+        if (contentArea) {
+          contentArea.style.backgroundColor = 'transparent'
+          contentArea.querySelectorAll('*').forEach(function (child) {
+            child.style.backgroundColor = 'transparent'
+          })
+        }
+      } else {
+        el.style.background = ''
+      }
+    })
+
+    // ── Centre (bg-[#F5F6FA]) via JS également ────────────────────────────────
+    document.querySelectorAll('[class*="bg-[#F5F6FA]"]').forEach(function (el) {
+      _applyBg(el, centerSrc)
+      el.style.backgroundColor = centerSrc ? 'transparent' : ''
+      el.querySelectorAll('*').forEach(function (child) {
+        child.style.backgroundColor = centerSrc ? 'transparent' : ''
+      })
+    })
+
+    // ── Injection CSS haute-spécificité (persistante après re-renders React) ──
+    // CSS !important bat les inline styles non-!important (dont background: white React).
+    // Inclut background-size/position/repeat que le shorthand React écrase.
     var styleEl = document.getElementById('_pai-wp-css')
     if (!styleEl) {
       styleEl = document.createElement('style')
@@ -116,32 +147,32 @@
       var k = theme.key
       var iD = 'url(' + theme.centerDark + ')'
       var iL = 'url(' + (theme.centerLight || theme.centerDark) + ')'
-      // Sélecteurs dark / light / fallback (sans data-theme = dark par défaut)
       var sd = 'html[data-wallpaper="' + k + '"][data-theme="dark"]'
       var sl = 'html[data-wallpaper="' + k + '"][data-theme="light"]'
       var sf = 'html[data-wallpaper="' + k + '"]:not([data-theme="light"])'
+      var bg = function (img) {
+        return 'background-image:' + img + ' !important;background-size:cover !important;background-position:center !important;background-repeat:no-repeat !important;background-color:transparent !important;'
+      }
       styleEl.textContent = [
-        // ── DARK ─────────────────────────────────────────────────────────────
-        // Centre
-        sd + ' [class*="bg-[#F5F6FA]"] { background-image:' + iD + ' !important; background-color:transparent !important; }',
+        // ── DARK ──────────────────────────────────────────────────────────────
+        sd + ' [class*="bg-[#F5F6FA]"] { ' + bg(iD) + ' }',
         sd + ' [class*="bg-[#F5F6FA]"] > * { background-color:transparent !important; }',
-        // Panneau droit — > *:last-child pour ne pas toucher la barre d'onglets (premier enfant)
-        sd + ' [class*="w-[300px]"] { background-image:' + iD + ' !important; background-color:transparent !important; }',
-        sd + ' [class*="w-[300px]"] > *:last-child { background-color:transparent !important; }',
-        sd + ' [class*="w-[300px]"] > *:last-child * { background-color:transparent !important; }',
-        // ── LIGHT ────────────────────────────────────────────────────────────
-        sl + ' [class*="bg-[#F5F6FA]"] { background-image:' + iL + ' !important; background-color:transparent !important; }',
+        sd + ' ' + rp + ' { ' + bg(iD) + ' }',
+        sd + ' ' + rp + ' > *:last-child { background-color:transparent !important; }',
+        sd + ' ' + rp + ' > *:last-child * { background-color:transparent !important; }',
+        // ── LIGHT ─────────────────────────────────────────────────────────────
+        sl + ' [class*="bg-[#F5F6FA]"] { ' + bg(iL) + ' }',
         sl + ' [class*="bg-[#F5F6FA]"] > * { background-color:transparent !important; }',
-        sl + ' [class*="w-[300px]"] { background-image:' + iL + ' !important; background-color:transparent !important; }',
-        sl + ' [class*="w-[300px]"] > *:last-child { background-color:transparent !important; }',
-        sl + ' [class*="w-[300px]"] > *:last-child * { background-color:transparent !important; }',
-        // ── FALLBACK (data-theme absent = dark) ───────────────────────────────
-        sf + ' [class*="bg-[#F5F6FA]"] { background-image:' + iD + ' !important; background-color:transparent !important; }',
+        sl + ' ' + rp + ' { ' + bg(iL) + ' }',
+        sl + ' ' + rp + ' > *:last-child { background-color:transparent !important; }',
+        sl + ' ' + rp + ' > *:last-child * { background-color:transparent !important; }',
+        // ── FALLBACK (data-theme absent = dark) ────────────────────────────────
+        sf + ' [class*="bg-[#F5F6FA]"] { ' + bg(iD) + ' }',
         sf + ' [class*="bg-[#F5F6FA]"] > * { background-color:transparent !important; }',
-        sf + ' [class*="w-[300px]"] { background-image:' + iD + ' !important; background-color:transparent !important; }',
-        sf + ' [class*="w-[300px]"] > *:last-child { background-color:transparent !important; }',
-        sf + ' [class*="w-[300px]"] > *:last-child * { background-color:transparent !important; }',
-        // ── Console exclusion (tous modes) ────────────────────────────────────
+        sf + ' ' + rp + ' { ' + bg(iD) + ' }',
+        sf + ' ' + rp + ' > *:last-child { background-color:transparent !important; }',
+        sf + ' ' + rp + ' > *:last-child * { background-color:transparent !important; }',
+        // ── Console exclusion ──────────────────────────────────────────────────
         'html[data-wallpaper="' + k + '"] [class*="bg-[#192a2a]"] { background-color:#192a2a !important; }',
       ].join('\n')
     } else {

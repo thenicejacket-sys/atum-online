@@ -143,16 +143,27 @@
     var imgs = document.querySelectorAll('.pai-bg-dark, .pai-bg-light')
     if (imgs.length > 0) {
       window._paiApplyWallpaper(key)
-    } else {
-      var obs = new MutationObserver(function () {
-        var found = document.querySelectorAll('.pai-bg-dark, .pai-bg-light')
-        if (found.length > 0) {
-          obs.disconnect()
-          window._paiApplyWallpaper(key)
-        }
-      })
-      if (document.body) obs.observe(document.body, { childList: true, subtree: true })
     }
+
+    // Observer PERMANENT — réapplique le wallpaper après chaque navigation React
+    // React recrée les éléments DOM → styles inline perdus → cet observer les restaure
+    var _reapplyTimer = null
+    var _persistObs = new MutationObserver(function (mutations) {
+      var hasAdded = mutations.some(function (m) { return m.addedNodes.length > 0 })
+      if (!hasAdded) return
+      clearTimeout(_reapplyTimer)
+      _reapplyTimer = setTimeout(function () {
+        var k = localStorage.getItem('pai_wallpaper') || 'ai'
+        var t = window._paiWallpapers.find(function (w) { return w.key === k })
+        if (t) _applyAllBg(t)
+      }, 200)
+    })
+
+    function _startObs () {
+      _persistObs.observe(document.body, { childList: true, subtree: true })
+    }
+    if (document.body) _startObs()
+    else document.addEventListener('DOMContentLoaded', _startObs)
   }
 
   // ── Panel de sélection ────────────────────────────────────────────────────

@@ -52,7 +52,7 @@
     }
   }
 
-  // ── Appliquer toutes les images de fond (sidebar + tous les panneaux) ─────
+  // ── Appliquer toutes les images de fond (sidebar + panneaux) ─────────────
   function _applyAllBg (theme) {
     var isDark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark'
 
@@ -67,37 +67,18 @@
     var sidebar = _getSidebar()
     _applyBg(sidebar, theme && (isDark ? theme.leftDark : theme.leftLight))
 
-    var centerSrc = theme && (isDark ? theme.centerDark : theme.centerLight)
-
-    // Helper : applique fond sur un panneau, rend les enfants transparents
-    // sauf les zones console (bg sombre #192a2a) — elles gardent leur propre fond
-    function _applyPanel (el, src) {
-      if (!el) return
+    // Panneaux liste gauche (w-[280px]) — agents, chats
+    document.querySelectorAll('[class*="w-[280px]"]').forEach(function (el) {
+      var src = theme && (isDark ? theme.centerDark : theme.centerLight)
       _applyBg(el, src)
       el.style.backgroundColor = src ? 'transparent' : ''
       el.querySelectorAll('*').forEach(function (child) {
-        var cls = (typeof child.className === 'string') ? child.className : ''
-        if (cls.indexOf('bg-[#192a2a]') >= 0) return  // console → ne pas rendre transparent
         child.style.backgroundColor = src ? 'transparent' : ''
       })
-    }
-
-    // Panneau liste gauche (w-[280px]) — agents, chats, etc.
-    document.querySelectorAll('[class*="w-[280px]"]').forEach(function (el) {
-      _applyPanel(el, centerSrc)
     })
 
-    // Panneau centre principal (bg-[#F5F6FA])
-    document.querySelectorAll('[class*="bg-[#F5F6FA]"]').forEach(function (el) {
-      _applyPanel(el, centerSrc)
-    })
-
-    // Panneau droit info agent (w-[300px])
-    document.querySelectorAll('[class*="w-[300px]"]').forEach(function (el) {
-      _applyPanel(el, centerSrc)
-    })
-
-    // Ciblage explicite des headers bg-[#F0ECE4] (light mode)
+    // Ciblage explicite du header bg-[#F0ECE4] (light mode + topbar)
+    var centerSrc = theme && (isDark ? theme.centerDark : theme.centerLight)
     document.querySelectorAll('[class*="bg-[#F0ECE4]"]').forEach(function (el) {
       if (centerSrc) {
         el.style.backgroundImage = 'url(' + centerSrc + ')'
@@ -116,6 +97,39 @@
         })
       }
     })
+
+    // ── Injection CSS haute-spécificité pour centre + panneau droit ───────────
+    // Le CSS pai-theme-c1.css utilise !important sur bg-[#F5F6FA] et bg-white.
+    // Pour gagner, on injecte une règle avec spécificité plus haute (html[attr][attr] > 1 attr).
+    var styleEl = document.getElementById('_pai-wp-css')
+    if (!styleEl) {
+      styleEl = document.createElement('style')
+      styleEl.id = '_pai-wp-css'
+      document.head.appendChild(styleEl)
+    }
+    if (theme && theme.key !== 'ai' && centerSrc) {
+      var sel = 'html[data-wallpaper="' + theme.key + '"]'
+      var img = 'url(' + centerSrc + ')'
+      styleEl.textContent = [
+        // Centre (bg-[#F5F6FA]) : wallpaper + transparent
+        sel + ' [class*="bg-[#F5F6FA]"] {',
+        '  background-image: ' + img + ' !important;',
+        '  background-color: transparent !important; }',
+        // Direct children du centre → transparent pour laisser passer le wallpaper
+        sel + ' [class*="bg-[#F5F6FA]"] > * {',
+        '  background-color: transparent !important; }',
+        // Panneau droit (w-[300px]) : wallpaper + transparent
+        sel + ' [class*="w-[300px]"] {',
+        '  background-image: ' + img + ' !important;',
+        '  background-color: transparent !important; }',
+        // Direct children du panneau droit → transparent
+        sel + ' [class*="w-[300px]"] > * {',
+        '  background-color: transparent !important; }',
+        // Console (bg-[#192a2a]) garde son fond sombre — Tailwind sans !important suffit
+      ].join('\n')
+    } else {
+      styleEl.textContent = ''
+    }
   }
 
   // ── Observer le changement dark/light pour mettre à jour tous les fonds ───

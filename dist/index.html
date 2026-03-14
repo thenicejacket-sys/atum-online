@@ -256,14 +256,17 @@
           mailDot.style.transform = val ? 'translateX(20px)' : 'translateX(0)';
         }
 
+        // État persistant localStorage — default: true (actif)
+        var _gmailSaved = localStorage.getItem('atum_gmail_enabled');
+        setMailState(_gmailSaved === null ? true : _gmailSaved === '1');
+        // Sync discret avec le serveur (fire & forget, n'écrase pas le local)
         fetch((window.ATUM_API_URL || '') + '/api/gmail-config')
-          .then(function(r) { return r.json(); })
-          .then(function(cfg) { setMailState(!!cfg.enabled); })
           .catch(function() {});
 
         mailToggle.addEventListener('click', function() {
           var newVal = !mailEnabled;
           setMailState(newVal);
+          localStorage.setItem('atum_gmail_enabled', newVal ? '1' : '0');
           fetch((window.ATUM_API_URL || '') + '/api/gmail-config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

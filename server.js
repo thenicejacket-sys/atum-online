@@ -1384,7 +1384,7 @@ app.post('/api/chat', async (req, res) => {
 // ============================================================================
 
 function loadGmailConfig () {
-  let cfg = {}
+  let cfg = { enabled: true }  // default: actif au démarrage Railway
   try { cfg = JSON.parse(fs.readFileSync(GMAIL_CONFIG_PATH, 'utf8')) } catch {}
   // Variables d'environnement Railway — priorité sur le fichier pour persistance 24h/24
   if (process.env.GMAIL_ENABLED !== undefined) cfg.enabled = process.env.GMAIL_ENABLED === 'true'

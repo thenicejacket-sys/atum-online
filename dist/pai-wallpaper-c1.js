@@ -120,19 +120,22 @@
         // Centre
         sd + ' [class*="bg-[#F5F6FA]"] { background-image:' + iD + ' !important; background-color:transparent !important; }',
         sd + ' [class*="bg-[#F5F6FA]"] > * { background-color:transparent !important; }',
-        // Panneau droit — * pour atteindre les wrappers bg-white imbriqués
+        // Panneau droit — > *:last-child pour ne pas toucher la barre d'onglets (premier enfant)
         sd + ' [class*="w-[300px]"] { background-image:' + iD + ' !important; background-color:transparent !important; }',
-        sd + ' [class*="w-[300px]"] * { background-color:transparent !important; }',
+        sd + ' [class*="w-[300px]"] > *:last-child { background-color:transparent !important; }',
+        sd + ' [class*="w-[300px]"] > *:last-child * { background-color:transparent !important; }',
         // ── LIGHT ────────────────────────────────────────────────────────────
         sl + ' [class*="bg-[#F5F6FA]"] { background-image:' + iL + ' !important; background-color:transparent !important; }',
         sl + ' [class*="bg-[#F5F6FA]"] > * { background-color:transparent !important; }',
         sl + ' [class*="w-[300px]"] { background-image:' + iL + ' !important; background-color:transparent !important; }',
-        sl + ' [class*="w-[300px]"] * { background-color:transparent !important; }',
+        sl + ' [class*="w-[300px]"] > *:last-child { background-color:transparent !important; }',
+        sl + ' [class*="w-[300px]"] > *:last-child * { background-color:transparent !important; }',
         // ── FALLBACK (data-theme absent = dark) ───────────────────────────────
         sf + ' [class*="bg-[#F5F6FA]"] { background-image:' + iD + ' !important; background-color:transparent !important; }',
         sf + ' [class*="bg-[#F5F6FA]"] > * { background-color:transparent !important; }',
         sf + ' [class*="w-[300px]"] { background-image:' + iD + ' !important; background-color:transparent !important; }',
-        sf + ' [class*="w-[300px]"] * { background-color:transparent !important; }',
+        sf + ' [class*="w-[300px]"] > *:last-child { background-color:transparent !important; }',
+        sf + ' [class*="w-[300px]"] > *:last-child * { background-color:transparent !important; }',
         // ── Console exclusion (tous modes) ────────────────────────────────────
         'html[data-wallpaper="' + k + '"] [class*="bg-[#192a2a]"] { background-color:#192a2a !important; }',
       ].join('\n')

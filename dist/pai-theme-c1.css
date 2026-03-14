@@ -275,10 +275,10 @@ html[data-theme="dark"] [class*="rounded-2xl"][class*="rounded-tr-sm"][class*="b
   background-color: #2563EB !important;
   color: #ffffff !important;
 }
-/* Thème Atum — bulles assistant légèrement plus sombres — spécificité (0,5,0) */
+/* Thème Atum — Egyptian Blue — spécificité (0,5,0) */
 html[data-theme="dark"][data-wallpaper="atum"] [class*="rounded-2xl"][class*="rounded-tl-sm"][class*="bg-white"],
 html[data-theme="dark"][data-wallpaper="atum"] [class*="rounded-2xl"][class*="rounded-tr-sm"][class*="bg-white"] {
-  background-color: #1d4ed8 !important;
+  background-color: #1034A6 !important;
   color: #ffffff !important;
 }
 

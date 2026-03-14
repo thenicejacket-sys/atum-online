@@ -100,6 +100,40 @@ function extractText (payload) {
   return ''
 }
 
+// ── Extraction des pièces jointes PDF ─────────────────────────────────────
+async function extractPdfAttachments (payload, msgId, token) {
+  const found = []
+  function collectParts (part) {
+    if (!part) return
+    const isPdf = part.mimeType === 'application/pdf' ||
+      (part.filename && part.filename.toLowerCase().endsWith('.pdf'))
+    if (isPdf) found.push(part)
+    if (part.parts) part.parts.forEach(collectParts)
+  }
+  collectParts(payload)
+
+  const results = []
+  for (const part of found) {
+    try {
+      let raw = part.body?.data
+      if (!raw && part.body?.attachmentId) {
+        const att = await gmailGet(
+          `/users/me/messages/${msgId}/attachments/${part.body.attachmentId}`, token
+        )
+        raw = att.data
+      }
+      if (raw) {
+        // Gmail retourne du base64url → convertir en base64 standard
+        const base64 = Buffer.from(raw, 'base64url').toString('base64')
+        results.push({ filename: part.filename || 'attachment.pdf', data: base64 })
+      }
+    } catch (e) {
+      console.error(`[Gmail] ❌ Erreur extraction PDF ${part.filename} : ${e.message}`)
+    }
+  }
+  return results
+}
+
 function getHeader (headers, name) {
   return headers?.find(h => h.name.toLowerCase() === name.toLowerCase())?.value || ''
 }
@@ -151,8 +185,8 @@ function detectAgent (subject, agents) {
 }
 
 // ── Appel Claude via OpenRouter API (fetch natif, pas de SDK) ─────────────
-async function callAgent (agent, email) {
-  const userMsg = `Tu as reçu un email professionnel. Réponds directement, sans commenter ta démarche.
+async function callAgent (agent, email, pdfs = []) {
+  const textMsg = `Tu as reçu un email professionnel. Réponds directement, sans commenter ta démarche.
 
 EXPÉDITEUR : ${email.from}
 SUJET : ${email.subject}
@@ -168,6 +202,22 @@ RÈGLES DE FORMAT ABSOLUES :
 - Phrases courtes, directes, humaines
 - Salutation naturelle + signature "${agent.name}"`
 
+  // Si des PDFs sont présents → contenu multimodal (documents + texte)
+  let userContent
+  if (pdfs.length > 0) {
+    userContent = []
+    for (const pdf of pdfs) {
+      userContent.push({
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: pdf.data },
+        title: pdf.filename
+      })
+    }
+    userContent.push({ type: 'text', text: textMsg })
+  } else {
+    userContent = textMsg
+  }
+
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -181,7 +231,7 @@ RÈGLES DE FORMAT ABSOLUES :
       max_tokens: 2048,
       messages: [
         { role: 'system', content: agent.systemPrompt },
-        { role: 'user',   content: userMsg }
+        { role: 'user',   content: userContent }
       ]
     })
   })
@@ -253,8 +303,13 @@ async function main () {
         continue
       }
 
+      const pdfs = await extractPdfAttachments(full.payload, msg.id, token)
+      if (pdfs.length > 0) {
+        console.log(`[Gmail] 📎 ${pdfs.length} PDF(s) détecté(s) : ${pdfs.map(p => p.filename).join(', ')}`)
+      }
+
       console.log(`[Gmail] ✍️  ${agent.name} répond à ${from} (sujet: "${subject}")`)
-      const reply = await callAgent(agent, { from, subject, body })
+      const reply = await callAgent(agent, { from, subject, body }, pdfs)
       const raw   = buildMime({
         to: from, from: ownerEmail, subject, body: reply,
         replyToMsgId: msgId,

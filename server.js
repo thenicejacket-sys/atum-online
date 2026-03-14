@@ -1358,9 +1358,23 @@ app.post('/api/chat', async (req, res) => {
 // ============================================================================
 
 function loadGmailConfig () {
-  try { return JSON.parse(fs.readFileSync(GMAIL_CONFIG_PATH, 'utf8')) } catch { return null }
+  let cfg = {}
+  try { cfg = JSON.parse(fs.readFileSync(GMAIL_CONFIG_PATH, 'utf8')) } catch {}
+  // Variables d'environnement Railway — priorité sur le fichier pour persistance 24h/24
+  if (process.env.GMAIL_ENABLED !== undefined) cfg.enabled = process.env.GMAIL_ENABLED === 'true'
+  if (process.env.GMAIL_API_KEY) cfg.api_key = process.env.GMAIL_API_KEY
+  return cfg
 }
 function loadGmailToken () {
+  // Variables d'environnement Railway — persistent entre redémarrages
+  if (process.env.GMAIL_REFRESH_TOKEN) {
+    return {
+      refresh_token: process.env.GMAIL_REFRESH_TOKEN,
+      token_uri: 'https://oauth2.googleapis.com/token',
+      client_id: process.env.GMAIL_CLIENT_ID || '905451623884-c3flncjl69slhuo02hvfddbs8r9tm0de.apps.googleusercontent.com',
+      client_secret: process.env.GMAIL_CLIENT_SECRET,
+    }
+  }
   try { return JSON.parse(fs.readFileSync(GMAIL_TOKEN_PATH, 'utf8')) } catch { return null }
 }
 function loadCustomAgentsGmail () {

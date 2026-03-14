@@ -110,8 +110,8 @@ html[data-theme="dark"] {
   /* Bulles */
   --bubble-user-bg:     #0d9488;
   --bubble-user-text:   #ffffff;
-  --bubble-agent-bg:    #1E1E1E;
-  --bubble-agent-text:  #EDEDED;
+  --bubble-agent-bg:    #2563EB;
+  --bubble-agent-text:  #ffffff;
   --bubble-shadow:      none;
 
   /* Panneau droit */
@@ -267,6 +267,13 @@ html[data-theme="dark"] [class*="#0d1117"] {
   background-color: var(--bubble-agent-bg) !important;
   color: var(--bubble-agent-text) !important;
   box-shadow: var(--bubble-shadow) !important;
+}
+
+/* Renforcement dark mode — spécificité (0,4,0) bat [border-b] qui match border-border */
+html[data-theme="dark"] [class*="rounded-2xl"][class*="rounded-tl-sm"][class*="bg-white"],
+html[data-theme="dark"] [class*="rounded-2xl"][class*="rounded-tr-sm"][class*="bg-white"] {
+  background-color: #2563EB !important;
+  color: #ffffff !important;
 }
 
 /* User bubbles */

@@ -1,6 +1,6 @@
 ---
 name: Victor
-role: Executive Consultant & Strategist
+role: Executive Assistant
 group: pro
 ---
 

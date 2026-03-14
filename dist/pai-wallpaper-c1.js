@@ -155,8 +155,11 @@
       }
       // Barre de saisie (input bar) — classe unique : border-t + border-border + px-6
       var ib = '[class*="border-t"][class*="border-border"][class*="px-6"]'
+      // Sidebar gauche (60px)
+      var sb = '[class*="w-[60px]"]'
       styleEl.textContent = [
         // ── DARK ──────────────────────────────────────────────────────────────
+        sd + ' ' + sb + ' { ' + bg(iD) + ' }',
         sd + ' [class*="bg-[#F5F6FA]"] { ' + bg(iD) + ' }',
         sd + ' [class*="bg-[#F5F6FA]"] > * { background-color:transparent !important; }',
         sd + ' ' + rp + ' { ' + bg(iD) + ' }',
@@ -164,6 +167,7 @@
         sd + ' ' + rp + ' > *:last-child * { background-color:transparent !important; }',
         sd + ' ' + ib + ' { ' + bg(iD) + ' }',
         // ── LIGHT ─────────────────────────────────────────────────────────────
+        sl + ' ' + sb + ' { ' + bg(iL) + ' }',
         sl + ' [class*="bg-[#F5F6FA]"] { ' + bg(iL) + ' }',
         sl + ' [class*="bg-[#F5F6FA]"] > * { background-color:transparent !important; }',
         sl + ' ' + rp + ' { ' + bg(iL) + ' }',
@@ -171,6 +175,7 @@
         sl + ' ' + rp + ' > *:last-child * { background-color:transparent !important; }',
         sl + ' ' + ib + ' { ' + bg(iL) + ' }',
         // ── FALLBACK (data-theme absent = dark) ────────────────────────────────
+        sf + ' ' + sb + ' { ' + bg(iD) + ' }',
         sf + ' [class*="bg-[#F5F6FA]"] { ' + bg(iD) + ' }',
         sf + ' [class*="bg-[#F5F6FA]"] > * { background-color:transparent !important; }',
         sf + ' ' + rp + ' { ' + bg(iD) + ' }',

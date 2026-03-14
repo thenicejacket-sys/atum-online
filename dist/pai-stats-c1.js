@@ -198,8 +198,24 @@
 
     document.body.appendChild(panel)
 
+    // ── Auto-refresh toutes les 30 secondes ──────────────────────────────────
+    var _autoRefreshInterval = null
+    function _startAutoRefresh (startISO, endISO) {
+      if (_autoRefreshInterval) clearInterval(_autoRefreshInterval)
+      _autoRefreshInterval = setInterval(function () {
+        if (!document.getElementById('_pai-stats-panel')) {
+          clearInterval(_autoRefreshInterval)
+          return
+        }
+        renderStats(panel, startISO, endISO)
+      }, 30000)
+    }
+
     // ── Event: close ────────────────────────────────────────────────────────
-    panel.querySelector('#_s-close').addEventListener('click', function () { panel.remove() })
+    panel.querySelector('#_s-close').addEventListener('click', function () {
+      if (_autoRefreshInterval) clearInterval(_autoRefreshInterval)
+      panel.remove()
+    })
 
     // ── Event: period buttons ────────────────────────────────────────────────
     panel.querySelectorAll('[data-period]').forEach(function (btn) {
@@ -222,6 +238,7 @@
           start = new Date(now.getTime() - 90 * 864e5).toISOString()
         }
         renderStats(panel, start, end)
+        _startAutoRefresh(start, end)
       })
     })
 
@@ -234,10 +251,12 @@
       var end   = new Date(e + 'T23:59:59').toISOString()
       localStorage.setItem('pai_stats_range', JSON.stringify({ start: s, end: e }))
       renderStats(panel, start, end)
+      _startAutoRefresh(start, end)
     })
 
     // ── Initial render : YTD ─────────────────────────────────────────────────
     renderStats(panel, ytd.start, ytd.end)
+    _startAutoRefresh(ytd.start, ytd.end)
   }
 
 })()

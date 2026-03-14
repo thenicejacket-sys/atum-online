@@ -1384,9 +1384,14 @@ app.post('/api/chat', async (req, res) => {
 // ============================================================================
 
 function loadGmailConfig () {
-  let cfg = { enabled: false }  // default: inactif jusqu'à activation via toggle
-  try { cfg = JSON.parse(fs.readFileSync(GMAIL_CONFIG_PATH, 'utf8')) } catch {}
-  // Variables d'environnement Railway — priorité sur le fichier pour persistance 24h/24
+  let cfg = { enabled: false }
+  try {
+    cfg = JSON.parse(fs.readFileSync(GMAIL_CONFIG_PATH, 'utf8'))
+  } catch {
+    // Fallback: lire depuis la racine du repo (état persistant écrit par le toggle)
+    try { cfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'gmail-config.json'), 'utf8')) } catch {}
+  }
+  // Variables d'environnement Railway — priorité maximale
   if (process.env.GMAIL_ENABLED !== undefined) cfg.enabled = process.env.GMAIL_ENABLED === 'true'
   if (process.env.GMAIL_API_KEY) cfg.api_key = process.env.GMAIL_API_KEY
   return cfg

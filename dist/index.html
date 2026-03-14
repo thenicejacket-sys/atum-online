@@ -267,10 +267,15 @@
           var newVal = !mailEnabled;
           setMailState(newVal);
           localStorage.setItem('atum_gmail_enabled', newVal ? '1' : '0');
+          var _body = JSON.stringify({ enabled: newVal });
+          var _hdrs = { 'Content-Type': 'application/json' };
+          // Railway — effet immédiat sur le daemon en cours
           fetch((window.ATUM_API_URL || '') + '/api/gmail-config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ enabled: newVal })
+            method: 'POST', headers: _hdrs, body: _body
+          }).catch(function() {});
+          // Vercel — persistance dans le repo GitHub (survit aux redémarrages Railway)
+          fetch('/api/gmail-config', {
+            method: 'POST', headers: _hdrs, body: _body
           }).catch(function() {});
         });
 

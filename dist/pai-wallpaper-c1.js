@@ -1,5 +1,10 @@
 ;(function () {
 
+  // ── Sur ATUM Online, forcer le thème Atum par défaut ─────────────────────
+  if (!localStorage.getItem('pai_wallpaper') || localStorage.getItem('pai_wallpaper') === 'ai') {
+    localStorage.setItem('pai_wallpaper', 'atum')
+  }
+
   // ── Registre des thèmes de fond ────────────────────────────────────────────
   window._paiWallpapers = [
     {
@@ -146,7 +151,7 @@
 
   // ── Observer le changement dark/light pour mettre à jour tous les fonds ───
   new MutationObserver(function () {
-    var key = localStorage.getItem('pai_wallpaper') || 'ai'
+    var key = localStorage.getItem('pai_wallpaper') || 'atum'
     var theme = window._paiWallpapers.find(function (w) { return w.key === key })
     _applyAllBg(theme || null)
   }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
@@ -180,7 +185,7 @@
 
   // ── Observer le DOM pour appliquer dès que les images sont rendues ─────────
   function initWallpaper () {
-    var key = localStorage.getItem('pai_wallpaper') || 'ai'
+    var key = localStorage.getItem('pai_wallpaper') || 'atum'
     var imgs = document.querySelectorAll('.pai-bg-dark, .pai-bg-light')
     if (imgs.length > 0) {
       window._paiApplyWallpaper(key)
@@ -194,7 +199,7 @@
       if (!hasAdded) return
       clearTimeout(_reapplyTimer)
       _reapplyTimer = setTimeout(function () {
-        var k = localStorage.getItem('pai_wallpaper') || 'ai'
+        var k = localStorage.getItem('pai_wallpaper') || 'atum'
         var t = window._paiWallpapers.find(function (w) { return w.key === k })
         if (t) _applyAllBg(t)
       }, 200)
@@ -212,7 +217,7 @@
     var existing = document.getElementById('pai-wallpaper-panel')
     if (existing) { existing.remove(); return }
 
-    var currentKey = localStorage.getItem('pai_wallpaper') || 'ai'
+    var currentKey = localStorage.getItem('pai_wallpaper') || 'atum'
 
     var panel = document.createElement('div')
     panel.id = 'pai-wallpaper-panel'

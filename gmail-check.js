@@ -15,6 +15,7 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
 const AGENTS_DIR         = path.join(__dirname, 'agents')
 const CONFIG_PATH        = path.join(__dirname, 'gmail-config.json')
 const LABEL_PROCESSED    = 'PAI-Processed'
+const LABEL_SEEN         = 'PAI-Seen'
 const MAX_EMAILS         = 5
 
 if (!OPENROUTER_API_KEY) {
@@ -88,13 +89,24 @@ function getHeader (headers, name) {
   return headers?.find(h => h.name.toLowerCase() === name.toLowerCase())?.value || ''
 }
 
-// ── Label Gmail pour marquer les emails traités ───────────────────────────
+// ── Label Gmail visible (emails traités par un agent) ────────────────────
 async function ensureLabel (token, labelName) {
   const list = await gmailGet('/users/me/labels', token)
   const existing = (list.labels || []).find(l => l.name === labelName)
   if (existing) return existing.id
   const created = await gmailPost('/users/me/labels', token, {
     name: labelName, labelListVisibility: 'labelShow', messageListVisibility: 'show'
+  })
+  return created.id
+}
+
+// ── Label Gmail caché (tracking interne — empêche le re-traitement) ───────
+async function ensureLabelHidden (token, labelName) {
+  const list = await gmailGet('/users/me/labels', token)
+  const existing = (list.labels || []).find(l => l.name === labelName)
+  if (existing) return existing.id
+  const created = await gmailPost('/users/me/labels', token, {
+    name: labelName, labelListVisibility: 'labelHide', messageListVisibility: 'hide'
   })
   return created.id
 }
@@ -185,12 +197,13 @@ async function main () {
   }
   console.log(`[Gmail] ${agents.length} agent(s) : ${agents.map(a => a.name).join(', ')}`)
 
-  const token      = await refreshAccessToken()
-  const labelId    = await ensureLabel(token, LABEL_PROCESSED)
-  const profile    = await gmailGet('/users/me/profile', token)
-  const ownerEmail = profile.emailAddress || ''
+  const token       = await refreshAccessToken()
+  const labelId     = await ensureLabel(token, LABEL_PROCESSED)
+  const labelSeenId = await ensureLabelHidden(token, LABEL_SEEN)
+  const profile     = await gmailGet('/users/me/profile', token)
+  const ownerEmail  = profile.emailAddress || ''
 
-  const q    = encodeURIComponent(`is:unread -label:${LABEL_PROCESSED}`)
+  const q    = encodeURIComponent(`is:unread -label:${LABEL_SEEN} -label:${LABEL_PROCESSED}`)
   const list = await gmailGet(`/users/me/messages?q=${q}&maxResults=${MAX_EMAILS}`, token)
 
   if (!list.messages?.length) {
@@ -210,17 +223,18 @@ async function main () {
       const refs    = getHeader(hdrs, 'References')
       const body    = extractText(full.payload)
 
-      // Anti-boucle — ignorer ses propres emails
+      // Anti-boucle — ignorer ses propres emails (label caché, pas visible)
       if (ownerEmail && from.includes(ownerEmail)) {
         console.log(`[Gmail] ⏭️  Email propre ignoré (anti-boucle)`)
-        await gmailPost(`/users/me/messages/${msg.id}/modify`, token, { addLabelIds: [labelId] })
+        await gmailPost(`/users/me/messages/${msg.id}/modify`, token, { addLabelIds: [labelSeenId] })
         continue
       }
 
       const agent = detectAgent(subject, agents)
       if (!agent) {
-        console.log(`[Gmail] ⏭️  Aucun agent pour "${subject}" — ignoré`)
-        await gmailPost(`/users/me/messages/${msg.id}/modify`, token, { addLabelIds: [labelId] })
+        // Aucun agent ne correspond — label caché uniquement (pas de PAI-Processed visible)
+        console.log(`[Gmail] ⏭️  Aucun agent pour "${subject}" — marqué PAI-Seen (caché)`)
+        await gmailPost(`/users/me/messages/${msg.id}/modify`, token, { addLabelIds: [labelSeenId] })
         continue
       }
 
@@ -234,7 +248,8 @@ async function main () {
 
       await gmailPost('/users/me/messages/send', token, { raw, threadId: full.threadId })
       console.log(`[Gmail] ✅ Réponse envoyée à ${from} par ${agent.name}`)
-      await gmailPost(`/users/me/messages/${msg.id}/modify`, token, { addLabelIds: [labelId] })
+      // Label visible PAI-Processed + label caché PAI-Seen
+      await gmailPost(`/users/me/messages/${msg.id}/modify`, token, { addLabelIds: [labelId, labelSeenId] })
 
     } catch (e) {
       console.error(`[Gmail] ❌ Erreur sur message ${msg.id} :`, e.message)

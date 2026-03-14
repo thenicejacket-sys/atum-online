@@ -8,28 +8,28 @@
   var _t = {
 
     // ── Navigation & Structure ─────────────────────────────────────────
-    'Assistants':                                     'Assistants',
+    'Assistants':                                     'Agents',
     'Chats':                                          'Chats',
     'Statistiques':                                   'Statistics',
     'Parametres':                                     'Settings',
     'Dossier':                                        'Folder',
 
     // ── Mode Agents (aT sidebar) ───────────────────────────────────────
-    'Sélectionnez un agent pour démarrer un chat':    'Select an assistant to start a chat',
-    'Selectionnez un agent pour demarrer un chat':    'Select an assistant to start a chat',
+    'Sélectionnez un agent pour démarrer un chat':    'Select an agent to start a chat',
+    'Selectionnez un agent pour demarrer un chat':    'Select an agent to start a chat',
 
     // ── Mode Chats (lT sidebar) ────────────────────────────────────────
     'Aucune conversation':                            'No conversations',
-    'Démarrez un chat depuis la section Agents':      'Start a chat from the Assistants section',
-    'Demarrez un chat depuis la section Agents':      'Start a chat from the Assistants section',
-    'Voir les agents':                                'View assistants',
+    'Démarrez un chat depuis la section Agents':      'Start a chat from the Agents section',
+    'Demarrez un chat depuis la section Agents':      'Start a chat from the Agents section',
+    'Voir les agents':                                'View agents',
 
     // ── Zone chat (kh) ─────────────────────────────────────────────────
     'Ecrivez votre message ci-dessous.':              'Write your message below.',
     'Commencez une conversation avec':                'Start a conversation with',
 
     // ── Pipeline view ──────────────────────────────────────────────────
-    'Selectionnez un agent pour commencer':           'Select an assistant to get started',
+    'Selectionnez un agent pour commencer':           'Select an agent to get started',
     'Aucune execution':                               'No execution',
     'Aucun pipeline':                                 'No pipeline',
 
@@ -57,15 +57,15 @@
     'Application desktop requise':      'Desktop application required',
 
     // ── Groupes d\'agents (sidebar sections) ───────────────────────────
-    'Assistants PAI':        'PAI Assistants',
-    'Assistants Perso':      'Personal Assistants',
-    'Assistants Pro':        'Pro Assistants',
-    'Assistants Comptables': 'Accounting Assistants',
-    'Assistants Compta':     'Accounts Assistants',
+    'Assistants PAI':        'PAI Agents',
+    'Assistants Perso':      'Personal Agents',
+    'Assistants Pro':        'Pro Agents',
+    'Assistants Comptables': 'Accounting Agents',
+    'Assistants Compta':     'Accounts Agents',
     'Consultant IA ATUM':    'ATUM AI Consultants',
 
     // ── Descriptions courtes des agents (sous le nom) ──────────────────
-    'Orchestrateur d Assistants':                    'Assistants Orchestrator',
+    'Orchestrateur d Assistants':                    'Agents Orchestrator',
     'Orchestrateur IA':                              'AI Orchestrator',
     'Diagnostic IA':                                 'AI Diagnostic',
     'Analyse processus IA':                          'AI Process Analysis',

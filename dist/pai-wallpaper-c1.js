@@ -68,9 +68,22 @@
       document.documentElement.removeAttribute('data-wallpaper')
     }
 
-    // Sidebar gauche (60px)
-    var sidebar = _getSidebar()
-    _applyBg(sidebar, theme && (isDark ? theme.leftDark : theme.leftLight))
+    // Sidebar gauche (60px) — querySelectorAll direct (évite l'échec de _getSidebar en re-render)
+    var sidebarSrc = theme && (isDark ? theme.leftDark : theme.leftLight)
+    document.querySelectorAll('[class*="w-[60px]"]').forEach(function (el) {
+      if (sidebarSrc) {
+        el.style.backgroundImage = 'url(' + sidebarSrc + ')'
+        el.style.backgroundSize = 'cover'
+        el.style.backgroundPosition = 'center'
+        el.style.backgroundRepeat = 'no-repeat'
+      } else {
+        el.style.backgroundImage = ''
+        el.style.backgroundSize = ''
+        el.style.backgroundPosition = ''
+        el.style.backgroundRepeat = ''
+        el.style.backgroundColor = ''
+      }
+    })
 
     // Panneaux liste gauche (w-[280px]) — agents, chats
     document.querySelectorAll('[class*="w-[280px]"]').forEach(function (el) {

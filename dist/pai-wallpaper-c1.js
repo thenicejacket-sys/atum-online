@@ -153,6 +153,8 @@
       var bg = function (img) {
         return 'background-image:' + img + ' !important;background-size:cover !important;background-position:center !important;background-repeat:no-repeat !important;background-color:transparent !important;'
       }
+      // Barre de saisie (input bar) — classe unique : border-t + border-border + px-6
+      var ib = '[class*="border-t"][class*="border-border"][class*="px-6"]'
       styleEl.textContent = [
         // ── DARK ──────────────────────────────────────────────────────────────
         sd + ' [class*="bg-[#F5F6FA]"] { ' + bg(iD) + ' }',
@@ -160,18 +162,21 @@
         sd + ' ' + rp + ' { ' + bg(iD) + ' }',
         sd + ' ' + rp + ' > *:last-child { background-color:transparent !important; }',
         sd + ' ' + rp + ' > *:last-child * { background-color:transparent !important; }',
+        sd + ' ' + ib + ' { ' + bg(iD) + ' }',
         // ── LIGHT ─────────────────────────────────────────────────────────────
         sl + ' [class*="bg-[#F5F6FA]"] { ' + bg(iL) + ' }',
         sl + ' [class*="bg-[#F5F6FA]"] > * { background-color:transparent !important; }',
         sl + ' ' + rp + ' { ' + bg(iL) + ' }',
         sl + ' ' + rp + ' > *:last-child { background-color:transparent !important; }',
         sl + ' ' + rp + ' > *:last-child * { background-color:transparent !important; }',
+        sl + ' ' + ib + ' { ' + bg(iL) + ' }',
         // ── FALLBACK (data-theme absent = dark) ────────────────────────────────
         sf + ' [class*="bg-[#F5F6FA]"] { ' + bg(iD) + ' }',
         sf + ' [class*="bg-[#F5F6FA]"] > * { background-color:transparent !important; }',
         sf + ' ' + rp + ' { ' + bg(iD) + ' }',
         sf + ' ' + rp + ' > *:last-child { background-color:transparent !important; }',
         sf + ' ' + rp + ' > *:last-child * { background-color:transparent !important; }',
+        sf + ' ' + ib + ' { ' + bg(iD) + ' }',
         // ── Console exclusion ──────────────────────────────────────────────────
         'html[data-wallpaper="' + k + '"] [class*="bg-[#192a2a]"] { background-color:#192a2a !important; }',
       ].join('\n')

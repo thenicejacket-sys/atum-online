@@ -11,7 +11,7 @@ const _AGENT_NAMES = {
   'nathan':'N8than','fabrice':'Fabrice','christian':'Christian','frank':'Frank',
   'sophie':'Sophie','norman':'Norman','magali':'Magalie','catalin':'Catalin',
   'lionel':'Lionel','axelle':'Axelle','aziza':'Aziza','julie':'Julie','josie':'Julie',
-  'max':'Max','telos':'Telos','stellar':'Stellar','irma':'Irma',
+  'max':'Max','telos':'Telos','stellar':'Stellar','irma':'Irma','victor':'Victor',
 }
 function recordAgentUsage (agentId) {
   if (!agentId) return

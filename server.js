@@ -884,12 +884,17 @@ app.post('/api/chat', async (req, res) => {
 
   // ── Process attachments ───────────────────────────────────────────────────
   let attachmentContext = ''
-  const imageBlocks = []
+  const imageBlocks = []    // Claude multimodal image blocks (base64)
+  const documentBlocks = [] // Claude native PDF document blocks (pdfs-2024-09-25 beta)
+  let hasDocAttachment = false
   for (const att of attachments || []) {
     try {
       const buffer = Buffer.from(att.data, 'base64')
-      const isImage = att.type === 'image' || /\.(png|jpg|jpeg|gif|webp)$/i.test(att.name)
+      const isImage    = att.type === 'image' || /\.(png|jpg|jpeg|gif|webp)$/i.test(att.name)
+      const isPdf      = /\.pdf$/i.test(att.name)
       const isTextFile = /\.(txt|md|json|csv|js|ts|jsx|tsx|py|html|css|xml|yaml|yml|sh|sql)$/i.test(att.name)
+      const isExcel    = /\.(xlsx|xls)$/i.test(att.name)
+      const isWord     = /\.(docx|doc)$/i.test(att.name)
       if (isImage) {
         const mediaMime = att.mimeType && att.mimeType.startsWith('image/') ? att.mimeType
           : /\.png$/i.test(att.name) ? 'image/png'
@@ -903,8 +908,44 @@ app.post('/api/chat', async (req, res) => {
         } else {
           attachmentContext += `\n\n[Attached image: ${att.name} -- unsupported format (${mediaMime})]`
         }
+      } else if (isPdf) {
+        // For Anthropic: native document block (reads layout, tables, scanned PDFs)
+        // For OpenRouter: extract text via pdf-parse
+        documentBlocks.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: buffer.toString('base64') } })
+        try {
+          const pdfParse = require('pdf-parse')
+          const parsed = await pdfParse(buffer)
+          attachmentContext += `\n\n[Document PDF: ${att.name}]\n${parsed.text}`
+        } catch {
+          attachmentContext += `\n\n[Document PDF: ${att.name} — analysé ci-dessus]`
+        }
+        hasDocAttachment = true
       } else if (isTextFile) {
         attachmentContext += `\n\n[Attached file: ${att.name}]\n\`\`\`\n${buffer.toString('utf8')}\n\`\`\``
+        hasDocAttachment = true
+      } else if (isExcel) {
+        try {
+          const xlsx = require('xlsx')
+          const wb = xlsx.read(buffer)
+          let excelText = `[Excel file: ${att.name}]\n`
+          for (const sheetName of wb.SheetNames) {
+            excelText += `\n### Sheet: ${sheetName}\n`
+            excelText += xlsx.utils.sheet_to_csv(wb.Sheets[sheetName])
+          }
+          attachmentContext += '\n\n' + excelText
+          hasDocAttachment = true
+        } catch (e) {
+          attachmentContext += `\n\n[Excel file: ${att.name} -- read error: ${e.message}]`
+        }
+      } else if (isWord) {
+        try {
+          const mammoth = require('mammoth')
+          const result = await mammoth.extractRawText({ buffer })
+          attachmentContext += `\n\n[Word document: ${att.name}]\n${result.value}`
+          hasDocAttachment = true
+        } catch (e) {
+          attachmentContext += `\n\n[Word document: ${att.name} -- read error: ${e.message}]`
+        }
       } else {
         const ext = path.extname(att.name).slice(1) || 'bin'
         const tempPath = path.join(os.tmpdir(), `atum-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`)
@@ -912,9 +953,13 @@ app.post('/api/chat', async (req, res) => {
         tempFiles.push(tempPath)
         attachmentContext += `\n\n[Attached file: ${att.name} -- path: ${tempPath}]`
       }
-    } catch {
-      attachmentContext += `\n\n[Attachment: ${att.name} -- processing error]`
+    } catch (e) {
+      attachmentContext += `\n\n[Attachment: ${att.name} -- processing error: ${e.message}]`
     }
+  }
+  // Auto-KB instruction: when documents are attached, ask agent to save to KB
+  if (hasDocAttachment && agentId) {
+    attachmentContext += `\n\n⚠️ Auto instruction: Save a structured summary of this/these document(s) to your knowledge base via write_file at ~/.claude/databases/${agentId}_data.json. Add an entry in the appropriate array (documents, context, notes, etc.) with today's date, source, and key extracted information.`
   }
 
   sendStream({ type: 'start', timestamp: Date.now() })
@@ -1012,7 +1057,7 @@ app.post('/api/chat', async (req, res) => {
       const Anthropic = require('@anthropic-ai/sdk')
       const client = new Anthropic({
         apiKey: token,
-        defaultHeaders: { 'anthropic-beta': 'prompt-caching-2024-07-31' },
+        defaultHeaders: { 'anthropic-beta': 'pdfs-2024-09-25,prompt-caching-2024-07-31' },
       })
 
       // Load full agent system prompt
@@ -1052,12 +1097,13 @@ app.post('/api/chat', async (req, res) => {
         }
       }
 
-      // Build API messages (attach context + images to last user message)
+      // Build API messages (attach context + images/documents to last user message)
       const apiMessages = trimmedMsgs.map((m, i) => {
         if (i !== trimmedMsgs.length - 1) return { role: m.role, content: m.content }
         const textContent = (m.content || '') + attachmentContext
-        if (imageBlocks.length > 0) {
-          return { role: m.role, content: [...imageBlocks, { type: 'text', text: textContent }] }
+        if (documentBlocks.length > 0 || imageBlocks.length > 0) {
+          // Multimodal: document blocks first, then image blocks, then text
+          return { role: m.role, content: [...documentBlocks, ...imageBlocks, { type: 'text', text: textContent }] }
         }
         return { role: m.role, content: textContent }
       })

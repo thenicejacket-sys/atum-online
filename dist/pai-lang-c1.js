@@ -98,7 +98,7 @@
     'Astrologue et Numerologue':                     'Astrologer & Numerologist',
     'Tarologue Trois Voix':                          'Three-Voice Tarot Reader',
     'Coach de Vie':                                  'Life Coach',
-    'Analyse · Préconisations · Emails · Meetings · Briefings': 'Analysis · Recommendations · Emails · Meetings · Briefings',
+    'Executive Assistant':                            'Executive Agent',
 
     // ── Bios agents — ligne 1 (tooltip au survol de la photo) ──────────
     'Decompose tes demandes et delegue aux bons agents.':

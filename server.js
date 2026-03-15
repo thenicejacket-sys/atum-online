@@ -217,6 +217,27 @@ const PAI_TOOLS = [
       },
       required: ['agent_id']
     }
+  },
+  {
+    name: 'delegate_to_agents',
+    description: 'Delegate tasks to specialized sub-agents and run them in parallel. Each agent works independently and returns results. Use when you need specialized expertise from one or more collaborators.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        tasks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              agent: { type: 'string', description: 'Agent identifier (lowercase, e.g. "julie", "frank", "catalin")' },
+              task: { type: 'string', description: 'Detailed task description for the agent' }
+            },
+            required: ['agent', 'task']
+          }
+        }
+      },
+      required: ['tasks']
+    }
   }
 ]
 
@@ -269,7 +290,7 @@ function truncateResult(text, max) {
   return text.slice(0, half) + '\n\n[... truncated — ' + text.length + ' chars total ...]\n\n' + text.slice(-half)
 }
 
-async function executeTool(name, input, workspacePath, streamFn) {
+async function executeTool(name, input, workspacePath, streamFn, apiToken = null) {
   const resolvePath = (p) => {
     if (!p || p === '.') return workspacePath || os.homedir()
     if (path.isAbsolute(p)) return p
@@ -417,6 +438,89 @@ async function executeTool(name, input, workspacePath, streamFn) {
           `  - ${src} (${meta.count} chunks, topic: ${meta.topic || '?'}, date: ${meta.date || '?'})`
         )
         return `KB for ${agent_id}: ${info.totalChunks} chunks total.\n\nIndexed sources:\n${srcLines.join('\n')}\n\nFile: ${info.storagePath}`
+      }
+
+      case 'delegate_to_agents': {
+        const { tasks } = input
+        if (!tasks || tasks.length === 0) return 'No tasks provided to delegate_to_agents'
+        if (!apiToken) return 'No API token available — cannot spawn sub-agents'
+
+        const Anthropic = require('@anthropic-ai/sdk')
+        const subClient = new Anthropic({ apiKey: apiToken })
+        const emit = streamFn || (() => {})
+        const agentDirs = [CUSTOM_AGENTS_DIR, AGENTS_DIR]
+
+        const agentPromises = tasks.map(async ({ agent, task }) => {
+          emit({ type: 'subagent-start', agent, taskPreview: task.slice(0, 120), timestamp: Date.now() })
+          recordAgentUsage(agent) // Track sub-agent in KPI stats
+
+          let agentSystem = `You are ${agent}, a specialized assistant. Complete the task thoroughly and return your full result.`
+          let agentModel = 'claude-haiku-4-5-20251001'
+          try {
+            for (const dir of agentDirs) {
+              const candidates = [`${agent}.md`, `${agent.charAt(0).toUpperCase() + agent.slice(1)}.md`]
+              for (const filename of candidates) {
+                const filePath = path.join(dir, filename)
+                if (fs.existsSync(filePath)) {
+                  const raw = fs.readFileSync(filePath, 'utf8')
+                  const modelM = raw.match(/^model:\s*(.+)$/m)
+                  if (modelM) {
+                    const m = modelM[1].trim()
+                    if (m === 'haiku') agentModel = 'claude-haiku-4-5-20251001'
+                    else if (m === 'sonnet') agentModel = 'claude-sonnet-4-6'
+                    else if (m === 'opus') agentModel = 'claude-opus-4-6'
+                    else if (m.includes('claude-')) agentModel = m
+                  }
+                  agentSystem = raw.replace(/^---[\s\S]*?---\n?/, '').trim()
+                  break
+                }
+              }
+            }
+          } catch {}
+
+          try {
+            const SUB_AGENT_TOOLS = PAI_TOOLS.filter(t => t.name !== 'delegate_to_agents')
+            const subMessages = [{ role: 'user', content: task }]
+            let subResult = ''
+            let subTurns = 0
+            const MAX_SUB_TURNS = 8
+
+            while (subTurns < MAX_SUB_TURNS) {
+              const subMsg = await subClient.messages.create({
+                model: agentModel,
+                max_tokens: 4096,
+                system: agentSystem,
+                messages: subMessages,
+                tools: SUB_AGENT_TOOLS,
+              })
+              subTurns++
+              const textBlocks = subMsg.content.filter(b => b.type === 'text')
+              if (textBlocks.length) subResult = textBlocks.map(b => b.text).join('\n')
+              if (subMsg.stop_reason !== 'tool_use') break
+              subMessages.push({ role: 'assistant', content: subMsg.content })
+              const toolResults = []
+              for (const block of subMsg.content) {
+                if (block.type !== 'tool_use') continue
+                const toolOut = await executeTool(block.name, block.input, workspacePath, null, apiToken)
+                toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: String(toolOut) })
+              }
+              subMessages.push({ role: 'user', content: toolResults })
+            }
+
+            emit({ type: 'subagent-done', agent, success: true, preview: subResult.slice(0, 200), timestamp: Date.now() })
+            return { agent, result: subResult }
+          } catch (err) {
+            emit({ type: 'subagent-done', agent, success: false, preview: err.message, timestamp: Date.now() })
+            return { agent, result: `[${agent} error: ${err.message}]` }
+          }
+        })
+
+        const results = await Promise.all(agentPromises)
+        let output = `## Agent Results (${results.length} agents)\n\n`
+        for (const r of results) {
+          output += `### ${r.agent}\n${r.result}\n\n---\n\n`
+        }
+        return output
       }
 
       default:
@@ -1270,7 +1374,7 @@ app.post('/api/chat', async (req, res) => {
           })
           emitTUIStatus(sendStream, `${nextSpinner()} ${_lastToolName}`)
 
-          const result = await executeTool(block.name, block.input, workspacePath, sendStream)
+          const result = await executeTool(block.name, block.input, workspacePath, sendStream, token)
 
           sendStream({
             type: 'tool-result',

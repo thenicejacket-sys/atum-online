@@ -1558,7 +1558,18 @@ app.post('/api/chat', async (req, res) => {
           })
 
           clearInterval(_waitHb)
-          finalMsg = await stream.finalMessage()
+          finalMsg = await Promise.race([
+            stream.finalMessage(),
+            new Promise((_, reject) => {
+              if (abortController.signal.aborted) {
+                reject(Object.assign(new Error('AbortError'), { name: 'AbortError' }))
+              } else {
+                abortController.signal.addEventListener('abort', () => {
+                  reject(Object.assign(new Error('AbortError'), { name: 'AbortError' }))
+                }, { once: true })
+              }
+            })
+          ])
         } finally {
           clearTimeout(timeoutId)
         }

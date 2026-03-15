@@ -104,6 +104,13 @@
     }).join('')
   }
 
+  // Agents disponibles dans ATUM Online uniquement
+  var ATUM_AGENTS = {
+    'atum':1,'atum-diagnostic':1,'atum-analyse':1,'atum-offre':1,
+    'nathan':1,'fabrice':1,'christian':1,'julie':1,'josie':1,'lionel':1,
+    'axelle':1,'aziza':1,'frank':1,'catalin':1,'norman':1,'magali':1,'sophie':1,'victor':1
+  }
+
   async function renderStats (panel, startISO, endISO) {
     var donutEl  = panel.querySelector('#_s-donut')
     var legendEl = panel.querySelector('#_s-legend')
@@ -112,6 +119,7 @@
     if (legendEl) legendEl.innerHTML = ''
 
     var rows   = await fetchUsage(startISO, endISO)
+    rows = rows.filter(function(r) { return r.agent_id && ATUM_AGENTS[r.agent_id.toLowerCase()] })
     var agents = groupByAgent(rows)
     var total  = rows.length
 

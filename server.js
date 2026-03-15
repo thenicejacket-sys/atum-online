@@ -218,6 +218,101 @@ const PAI_TOOLS = [
       required: ['agent_id']
     }
   },
+  // ── Document generation tools ────────────────────────────────────────────
+  {
+    name: 'generate_pdf',
+    description: 'Generate a PDF file from structured content. Use when the user asks to "export as PDF", "put this in a PDF", "send me this as PDF", etc. Returns a download link.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        filename: { type: 'string', description: 'Filename without extension, e.g. "rapport_comptable"' },
+        title: { type: 'string', description: 'Document title displayed at the top' },
+        sections: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              heading: { type: 'string' },
+              content: { type: 'string' },
+              bullets: { type: 'array', items: { type: 'string' } }
+            }
+          }
+        },
+        footer: { type: 'string', description: 'Optional footer text' }
+      },
+      required: ['filename', 'title', 'sections']
+    }
+  },
+  {
+    name: 'generate_excel',
+    description: 'Generate an Excel (.xlsx) file. Use for tables, budgets, financial reports. Returns a download link.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        filename: { type: 'string', description: 'Filename without extension, e.g. "budget_2026"' },
+        sheets: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              headers: { type: 'array', items: { type: 'string' } },
+              rows: { type: 'array', items: { type: 'array' } }
+            },
+            required: ['name', 'headers', 'rows']
+          }
+        }
+      },
+      required: ['filename', 'sheets']
+    }
+  },
+  {
+    name: 'generate_word',
+    description: 'Generate a Word (.docx) document. Use for formal reports, letters, contracts. Returns a download link.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        filename: { type: 'string', description: 'Filename without extension, e.g. "contrat_service"' },
+        title: { type: 'string' },
+        sections: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              heading: { type: 'string' },
+              content: { type: 'string' },
+              bullets: { type: 'array', items: { type: 'string' } }
+            }
+          }
+        }
+      },
+      required: ['filename', 'title', 'sections']
+    }
+  },
+  {
+    name: 'generate_pptx',
+    description: 'Generate a PowerPoint (.pptx) presentation. Use for slideshows and decks. Includes auto-generated title slide. Returns a download link.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        filename: { type: 'string', description: 'Filename without extension, e.g. "presentation_client"' },
+        title: { type: 'string', description: 'Presentation title (used for title slide)' },
+        slides: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              content: { type: 'string' },
+              bullets: { type: 'array', items: { type: 'string' } }
+            },
+            required: ['title']
+          }
+        }
+      },
+      required: ['filename', 'title', 'slides']
+    }
+  },
   {
     name: 'delegate_to_agents',
     description: 'Delegate tasks to specialized sub-agents and run them in parallel. Each agent works independently and returns results. Use when you need specialized expertise from one or more collaborators.',
@@ -279,6 +374,23 @@ function explainError(context, err) {
     return `Request timed out. Retry.`
   }
   return `Error in ${context}: ${msg}`
+}
+
+// ── Generated files registry (download links, 24h TTL) ───────────────────────
+const _generatedFiles = new Map() // id -> { path, name, expires }
+setInterval(() => {
+  const now = Date.now()
+  for (const [id, entry] of _generatedFiles.entries()) {
+    if (now > entry.expires) {
+      try { require('fs').unlinkSync(entry.path) } catch {}
+      _generatedFiles.delete(id)
+    }
+  }
+}, 60 * 60 * 1000)
+function registerFile(filepath, name) {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  _generatedFiles.set(id, { path: filepath, name, expires: Date.now() + 24 * 60 * 60 * 1000 })
+  return id
 }
 
 // ── Tool execution ──────────────────────────────────────────────────────────
@@ -438,6 +550,116 @@ async function executeTool(name, input, workspacePath, streamFn, apiToken = null
           `  - ${src} (${meta.count} chunks, topic: ${meta.topic || '?'}, date: ${meta.date || '?'})`
         )
         return `KB for ${agent_id}: ${info.totalChunks} chunks total.\n\nIndexed sources:\n${srcLines.join('\n')}\n\nFile: ${info.storagePath}`
+      }
+
+      // ── Document generation ───────────────────────────────────────────────
+      case 'generate_pdf': {
+        const PDFDocument = require('pdfkit')
+        const { filename, title, sections = [], footer } = input
+        const fname = filename.endsWith('.pdf') ? filename : `${filename}.pdf`
+        const tmpDir = path.join(os.tmpdir(), 'atum-files')
+        fs.mkdirSync(tmpDir, { recursive: true })
+        const tmpPath = path.join(tmpDir, `${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`)
+        await new Promise((resolve, reject) => {
+          const doc = new PDFDocument({ margin: 55, size: 'A4' })
+          const stream = fs.createWriteStream(tmpPath)
+          doc.pipe(stream)
+          stream.on('finish', resolve)
+          stream.on('error', reject)
+          doc.font('Helvetica-Bold').fontSize(22).fillColor('#1a1a2e').text(title, { align: 'center' })
+          doc.moveDown(0.5)
+          doc.moveTo(55, doc.y).lineTo(540, doc.y).strokeColor('#3b82f6').lineWidth(2).stroke()
+          doc.moveDown(1)
+          for (const sec of sections) {
+            if (sec.heading) {
+              doc.font('Helvetica-Bold').fontSize(14).fillColor('#1a1a2e').text(sec.heading)
+              doc.moveDown(0.3)
+            }
+            if (sec.content) {
+              doc.font('Helvetica').fontSize(11).fillColor('#333333').text(sec.content, { align: 'justify', lineGap: 2 })
+              doc.moveDown(0.8)
+            }
+            if (sec.bullets && sec.bullets.length) {
+              for (const b of sec.bullets) {
+                doc.font('Helvetica').fontSize(11).fillColor('#333333').text(`• ${b}`, { indent: 20, lineGap: 2 })
+              }
+              doc.moveDown(0.8)
+            }
+          }
+          if (footer) doc.fontSize(9).fillColor('#888888').text(footer, { align: 'center' })
+          doc.end()
+        })
+        const id = registerFile(tmpPath, fname)
+        return `✅ PDF généré !\n\n📥 [Télécharger ${fname}](/api/files/${id})`
+      }
+
+      case 'generate_excel': {
+        const xlsx = require('xlsx')
+        const { filename, sheets } = input
+        const fname = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`
+        const tmpDir = path.join(os.tmpdir(), 'atum-files')
+        fs.mkdirSync(tmpDir, { recursive: true })
+        const tmpPath = path.join(tmpDir, `${Date.now()}-${Math.random().toString(36).slice(2)}.xlsx`)
+        const wb = xlsx.utils.book_new()
+        for (const sheet of (sheets || [])) {
+          const data = [sheet.headers || [], ...(sheet.rows || [])]
+          const ws = xlsx.utils.aoa_to_sheet(data)
+          xlsx.utils.book_append_sheet(wb, ws, (sheet.name || 'Sheet1').slice(0, 31))
+        }
+        xlsx.writeFile(wb, tmpPath)
+        const id = registerFile(tmpPath, fname)
+        return `✅ Excel généré !\n\n📥 [Télécharger ${fname}](/api/files/${id})`
+      }
+
+      case 'generate_word': {
+        const { Document, Paragraph, TextRun, HeadingLevel, Packer, AlignmentType } = require('docx')
+        const { filename, title, sections = [] } = input
+        const fname = filename.endsWith('.docx') ? filename : `${filename}.docx`
+        const tmpDir = path.join(os.tmpdir(), 'atum-files')
+        fs.mkdirSync(tmpDir, { recursive: true })
+        const tmpPath = path.join(tmpDir, `${Date.now()}-${Math.random().toString(36).slice(2)}.docx`)
+        const children = [
+          new Paragraph({ text: title, heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER }),
+          new Paragraph({ text: '' }),
+        ]
+        for (const sec of sections) {
+          if (sec.heading) children.push(new Paragraph({ text: sec.heading, heading: HeadingLevel.HEADING_1 }))
+          if (sec.content) children.push(new Paragraph({ children: [new TextRun({ text: sec.content })] }))
+          if (sec.bullets) for (const b of sec.bullets) children.push(new Paragraph({ text: b, bullet: { level: 0 } }))
+          children.push(new Paragraph({ text: '' }))
+        }
+        const doc = new Document({ sections: [{ children }] })
+        const buffer = await Packer.toBuffer(doc)
+        fs.writeFileSync(tmpPath, buffer)
+        const id = registerFile(tmpPath, fname)
+        return `✅ Document Word généré !\n\n📥 [Télécharger ${fname}](/api/files/${id})`
+      }
+
+      case 'generate_pptx': {
+        const PptxGenJS = require('pptxgenjs')
+        const { filename, title, slides = [] } = input
+        const fname = filename.endsWith('.pptx') ? filename : `${filename}.pptx`
+        const tmpDir = path.join(os.tmpdir(), 'atum-files')
+        fs.mkdirSync(tmpDir, { recursive: true })
+        const tmpPath = path.join(tmpDir, `${Date.now()}-${Math.random().toString(36).slice(2)}.pptx`)
+        const prs = new PptxGenJS()
+        prs.layout = 'LAYOUT_16x9'
+        const ts = prs.addSlide()
+        ts.background = { color: '1a1a2e' }
+        ts.addText(title, { x: 0.5, y: 2.5, w: 9, h: 1.5, fontSize: 36, bold: true, align: 'center', color: 'FFFFFF' })
+        for (const sd of slides) {
+          const sl = prs.addSlide()
+          sl.background = { color: 'FFFFFF' }
+          sl.addText(sd.title || '', { x: 0.4, y: 0.25, w: 9.2, h: 0.9, fontSize: 26, bold: true, color: '1a1a2e' })
+          sl.addShape(prs.ShapeType.line, { x: 0.4, y: 1.1, w: 9.2, h: 0, line: { color: '3b82f6', width: 2 } })
+          const items = sd.bullets && sd.bullets.length
+            ? sd.bullets.map(b => ({ text: b, options: { bullet: { type: 'bullet' }, fontSize: 18, color: '333333', breakLine: true } }))
+            : [{ text: sd.content || '', options: { fontSize: 18, color: '333333' } }]
+          sl.addText(items, { x: 0.4, y: 1.3, w: 9.2, h: 4.8, valign: 'top' })
+        }
+        await prs.writeFile({ fileName: tmpPath })
+        const id = registerFile(tmpPath, fname)
+        return `✅ Présentation PowerPoint générée !\n\n📥 [Télécharger ${fname}](/api/files/${id})`
       }
 
       case 'delegate_to_agents': {
@@ -958,6 +1180,15 @@ app.get('/api/conversations/load', (req, res) => {
   } catch {
     res.json({ success: true, conversations: [] })
   }
+})
+
+// ── GET /api/files/:id — download a generated file ───────────────────────────
+app.get('/api/files/:id', (req, res) => {
+  const entry = _generatedFiles.get(req.params.id)
+  if (!entry || !fs.existsSync(entry.path)) {
+    return res.status(404).json({ error: 'File not found or expired (24h TTL)' })
+  }
+  res.download(entry.path, entry.name)
 })
 
 // ── POST /api/chat — main chat endpoint (NDJSON streaming) ──────────────────

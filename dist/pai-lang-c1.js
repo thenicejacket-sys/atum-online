@@ -316,6 +316,10 @@
     '🔑  Clé API / Modèle':         '🔑  API Key / Model',
     'Langue':                       'Language',
     'LANGUE':                       'LANGUAGE',
+
+    // ── Victor bio ─────────────────────────────────────────────────────
+    "Analyse de donn\u00e9es, pr\u00e9conisations, r\u00e9daction d\u2019emails, pr\u00e9paration de meetings et briefings, comptes-rendus et synth\u00e8ses \u2014 votre bras droit ex\u00e9cutif sur tous vos sujets m\u00e9tier.":
+      'Data analysis, recommendations, email drafting, meeting & briefing preparation, reports and executive summaries \u2014 your executive right-hand on all your business topics.',
   }
 
   // ── Suffixes dynamiques (texte partiellement dynamique) ───────────────

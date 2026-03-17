@@ -286,13 +286,6 @@ async function main () {
       const refs    = getHeader(hdrs, 'References')
       const body    = extractText(full.payload)
 
-      // Anti-boucle — ignorer ses propres emails (label caché, pas visible)
-      if (ownerEmail && from.includes(ownerEmail)) {
-        console.log(`[Gmail] ⏭️  Email propre ignoré (anti-boucle)`)
-        await gmailPost(`/users/me/messages/${msg.id}/modify`, token, { addLabelIds: [labelSeenId] })
-        continue
-      }
-
       const agent = detectAgent(subject, agents)
       if (!agent) {
         // Aucun agent ne correspond — label caché uniquement (pas de PAI-Processed visible)

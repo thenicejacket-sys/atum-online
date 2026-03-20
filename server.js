@@ -762,6 +762,9 @@ function loadBaseContext(agentId = '') {
   const monthsFR = ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre']
   context += `\n\n# Date et heure actuelles\nNous sommes le **${daysFR[now.getDay()]} ${now.getDate()} ${monthsFR[now.getMonth()]} ${now.getFullYear()}**.\nHeure locale : ${now.toLocaleTimeString('fr-FR')}.`
 
+  // Document generation tools — always available
+  context += `\n\n---\n## Outils de génération de fichiers (TOUJOURS DISPONIBLES)\n\nQuand l'utilisateur demande un PDF, Excel ou Word — utilise DIRECTEMENT ces outils :\n- \`generate_pdf\` — Génère un PDF téléchargeable (rapport, dossier, synthèse, note, etc.)\n- \`generate_excel\` — Génère un fichier Excel .xlsx (tableaux, budgets, données financières)\n- \`generate_word\` — Génère un document Word .docx\n\n⚠️ Ne dis JAMAIS "je n'ai pas d'outil de génération" — ces outils sont toujours disponibles.\n---`
+
   // PAI agents registry — only for orchestrators
   const aid = agentId.toLowerCase()
   if (['pai', 'atum', 'christian'].includes(aid)) {

@@ -8,8 +8,11 @@
 //   OPENROUTER_API_KEY — clé API OpenRouter (openrouter.ai)
 
 const fs       = require('fs')
+const os       = require('os')
 const path     = require('path')
 const pdfParse = require('pdf-parse')
+const XLSX     = require('xlsx')
+const sharp    = require('sharp')
 
 const GMAIL_TOKEN        = JSON.parse(process.env.GMAIL_TOKEN || '{}')
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
@@ -101,20 +104,88 @@ function extractText (payload) {
   return ''
 }
 
-// ── Extraction des pièces jointes PDF ─────────────────────────────────────
-async function extractPdfAttachments (payload, msgId, token) {
+// ── Preprocessing image pour OCR (resize, niveaux de gris, contraste, netteté) ─
+async function preprocessForOCR (inputBuffer) {
+  try {
+    const meta = await sharp(inputBuffer).metadata()
+    const w    = meta.width || 800
+    // Cible : 2400px max (ideal OCR), 1200px min si image petite
+    const targetW = Math.min(Math.max(w, 1200), 2400)
+
+    const processed = await sharp(inputBuffer)
+      .rotate()                                          // EXIF auto-rotation (photo prise de côté)
+      .resize(targetW, null, { fit: 'inside' })         // rescale optimal OCR
+      .grayscale()                                      // niveaux de gris → moins de bruit couleur
+      .normalise()                                      // auto levels (étire l'histogramme)
+      .sharpen()                                        // accentue les bords du texte
+      .jpeg({ quality: 85 })
+      .toBuffer()
+
+    console.log(`[OCR] 🔧 ${w}px → ${targetW}px · ${(inputBuffer.length/1024).toFixed(0)}KB → ${(processed.length/1024).toFixed(0)}KB`)
+    return processed
+  } catch (e) {
+    console.warn(`[OCR] ⚠️  Preprocessing échoué (${e.message}) — image originale`)
+    return inputBuffer
+  }
+}
+
+// ── PaddleOCR v4 via @gutenye/ocr-node (ONNX — offline, état de l'art) ───
+// Bien meilleur que Tesseract sur tickets flous/inclinés/peu contrastés
+// Modèles bundlés dans node_modules — aucun download au runtime
+
+// Singleton : Ocr.create() est lent (chargement ONNX) — on l'appelle une seule fois par run
+let _paddleOcrInstance = null
+let _paddleOcrInit     = null
+
+async function getPaddleOcr () {
+  if (_paddleOcrInstance) return _paddleOcrInstance
+  if (!_paddleOcrInit) {
+    _paddleOcrInit = (async () => {
+      const { default: Ocr } = await import('@gutenye/ocr-node')
+      _paddleOcrInstance = await Ocr.create()
+      console.log('[PaddleOCR] 🧠 Modèles ONNX chargés')
+      return _paddleOcrInstance
+    })()
+  }
+  return _paddleOcrInit
+}
+
+async function paddleOCR (imageBuffer, fname) {
+  const tmpFile = path.join(os.tmpdir(), `ocr_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`)
+  try {
+    fs.writeFileSync(tmpFile, imageBuffer)
+    const ocr   = await getPaddleOcr()
+    const lines = await ocr.detect(tmpFile)
+    const text  = (lines || []).map(l => l.text).join('\n').trim()
+    if (!text || text.length < 10) return null
+    console.log(`[PaddleOCR] ✅ ${fname} — ${lines.length} lignes · ${text.length} chars`)
+    return text
+  } catch (e) {
+    console.error(`[PaddleOCR] ❌ ${fname} : ${e.message}`)
+    return null
+  } finally {
+    try { fs.unlinkSync(tmpFile) } catch {}
+  }
+}
+
+// ── Extraction de toutes les pièces jointes (PDF, Excel, Images) ──────────
+async function processAttachments (payload, msgId, token) {
   const found = []
   function collectParts (part) {
     if (!part) return
-    const isPdf = part.mimeType === 'application/pdf' ||
-      (part.filename && part.filename.toLowerCase().endsWith('.pdf'))
-    if (isPdf) found.push(part)
+    if (part.filename && part.filename.length > 0) found.push(part)
     if (part.parts) part.parts.forEach(collectParts)
   }
   collectParts(payload)
 
-  const results = []
+  const textBlocks     = []  // strings à injecter dans le message texte
+  const visionBlocks   = []  // blocs image base64 pour l'API vision
+  const documentBlocks = []  // blocs document PDF pour l'OCR natif Claude
+
   for (const part of found) {
+    const mime  = (part.mimeType || '').toLowerCase()
+    const fname = part.filename || 'attachment'
+
     try {
       let raw = part.body?.data
       if (!raw && part.body?.attachmentId) {
@@ -123,20 +194,83 @@ async function extractPdfAttachments (payload, msgId, token) {
         )
         raw = att.data
       }
-      if (raw) {
-        const buffer = Buffer.from(raw, 'base64url')
+      if (!raw) continue
+      const data = Buffer.from(raw, 'base64url')
+
+      // ── PDF ──
+      if (mime === 'application/pdf' || fname.toLowerCase().endsWith('.pdf')) {
+        // Essai 1 : pdf-parse (couche texte native — rapide, fiable sur PDFs bien formés)
+        let pdfTextOk = false
         try {
-          const parsed = await pdfParse(buffer)
-          results.push({ filename: part.filename || 'attachment.pdf', text: parsed.text.trim() })
-        } catch (pe) {
-          console.error(`[Gmail] ❌ Erreur parsing PDF ${part.filename} : ${pe.message}`)
+          const parsed  = await pdfParse(data)
+          const pdfText = parsed.text.trim()
+          if (pdfText.length >= 100) {
+            textBlocks.push(`[PDF: ${fname}]\n${pdfText}`)
+            pdfTextOk = true
+          }
+        } catch {}
+        if (!pdfTextOk) {
+          // Essai 2 : document block Claude (OCR natif Anthropic pour PDFs scannés)
+          textBlocks.push(`[PDF: ${fname}] — document scanné, analyse visuelle activée — je fais de mon mieux même si l'image n'est pas parfaite`)
+          documentBlocks.push({
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: data.toString('base64') }
+          })
+          console.log(`[Gmail] 🔍 PDF scanné : ${fname} — bloc document activé`)
         }
+
+      // ── Excel ──
+      } else if (
+        mime.includes('spreadsheet') || mime.includes('excel') ||
+        fname.toLowerCase().endsWith('.xlsx') || fname.toLowerCase().endsWith('.xls')
+      ) {
+        try {
+          const wb = XLSX.read(data, { type: 'buffer' })
+          let text = `[Excel: ${fname}]\n`
+          wb.SheetNames.forEach(name => {
+            text += `=== Feuille: ${name} ===\n${XLSX.utils.sheet_to_csv(wb.Sheets[name])}\n`
+          })
+          textBlocks.push(text)
+          console.log(`[Gmail] 📊 Excel lu : ${fname}`)
+        } catch (e) {
+          console.error(`[Gmail] ❌ Erreur parsing Excel ${fname} : ${e.message}`)
+        }
+
+      // ── Images (JPEG, PNG, GIF, WebP) ──
+      } else if (mime.startsWith('image/')) {
+        // Étape 1 : Sharp preprocessing (rotation EXIF, resize 2400px, grayscale, contraste, netteté)
+        const processed = await preprocessForOCR(data)
+
+        // Étape 2 : PaddleOCR v4 — extrait le texte brut de l'image prétraitée
+        const ocrText = await paddleOCR(processed, fname)
+
+        // Étape 3 : vision block — envoyer l'image à Claude pour lecture visuelle directe
+        visionBlocks.push({
+          type: 'image_url',
+          image_url: { url: `data:image/jpeg;base64,${processed.toString('base64')}` }
+        })
+
+        // Étape 4 : injecter le texte OCR brut (aide Claude à confirmer les valeurs)
+        // Claude reçoit ainsi deux sources : l'image ET le texte → recoupement automatique
+        if (ocrText) {
+          textBlocks.push(
+            `[Image: ${fname} — texte extrait par OCR]\n` +
+            `(Texte brut — peut contenir des erreurs de reconnaissance. ` +
+            `Utilise l'image ET ce texte pour confirmer chaque valeur.)\n` +
+            `---\n${ocrText}`
+          )
+        } else {
+          textBlocks.push(`[Image jointe: ${fname} — optimisée OCR]`)
+        }
+        console.log(`[Gmail] 🖼️  Image traitée : ${fname} — vision + PaddleOCR${ocrText ? ` (${ocrText.length} chars)` : ' (OCR échoué → vision seule)'}`)
       }
+
     } catch (e) {
-      console.error(`[Gmail] ❌ Erreur extraction PDF ${part.filename} : ${e.message}`)
+      console.error(`[Gmail] ❌ Erreur pièce jointe ${fname} : ${e.message}`)
     }
   }
-  return results
+
+  return { textBlocks, visionBlocks, documentBlocks }
 }
 
 function getHeader (headers, name) {
@@ -189,9 +323,44 @@ function detectAgent (subject, agents) {
   return agents.find(a => lc.includes(a.name.toLowerCase())) || null
 }
 
-// ── Appel Claude via OpenRouter API (fetch natif, pas de SDK) ─────────────
-async function callAgent (agent, email, pdfs = []) {
-  const textMsg = `Tu as reçu un email professionnel. Réponds directement, sans commenter ta démarche.
+// ── Tool definition: generate_excel ───────────────────────────────────────
+const GENERATE_EXCEL_TOOL = {
+  type: 'function',
+  function: {
+    name: 'generate_excel',
+    description: 'Génère un fichier Excel (.xlsx) avec plusieurs feuilles et l\'envoie en pièce jointe dans la réponse email. Utilise cet outil quand l\'utilisateur demande un tableau, un budget, un export de données, ou tout fichier Excel.',
+    parameters: {
+      type: 'object',
+      properties: {
+        filename: {
+          type: 'string',
+          description: 'Nom du fichier sans extension, ex: "budget_2026" ou "rapport_client"'
+        },
+        sheets: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name:    { type: 'string', description: 'Nom de l\'onglet (max 31 caractères)' },
+              headers: { type: 'array', items: { type: 'string' }, description: 'En-têtes de colonnes' },
+              rows:    { type: 'array', items: { type: 'array' }, description: 'Lignes de données — chaque ligne est un tableau de valeurs' }
+            },
+            required: ['name', 'headers', 'rows']
+          }
+        }
+      },
+      required: ['filename', 'sheets']
+    }
+  }
+}
+
+// ── Appel Claude via OpenRouter API avec support tools + vision + documents ─
+async function callAgent (agent, email, textBlocks, visionBlocks, documentBlocks) {
+  textBlocks     = textBlocks     || []
+  visionBlocks   = visionBlocks   || []
+  documentBlocks = documentBlocks || []
+
+  const baseText = `Tu as reçu un email professionnel${textBlocks.length > 0 ? ` avec pièce(s) jointe(s)` : ''}. Réponds directement, sans commenter ta démarche.
 
 EXPÉDITEUR : ${email.from}
 SUJET : ${email.subject}
@@ -207,38 +376,119 @@ RÈGLES DE FORMAT ABSOLUES :
 - Phrases courtes, directes, humaines
 - Salutation naturelle + signature "${agent.name}"`
 
-  // Si des PDFs sont présents → injecter le texte extrait dans le message
-  let userContent = textMsg
-  if (pdfs.length > 0) {
-    const pdfBlocks = pdfs.map(p =>
-      `\n\n[PIÈCE JOINTE PDF — ${p.filename}]\n${p.text}`
-    ).join('\n')
-    userContent = textMsg + pdfBlocks
+  // Injecter les blocs texte (PDF, Excel extraits)
+  const hasMultimodal = visionBlocks.length > 0 || documentBlocks.length > 0
+
+  // Instruction OCR forcée quand une image/document est joint
+  const ocrInstruction = hasMultimodal
+    ? `\n\nINSTRUCTION LECTURE DOCUMENT — PRIORITÉ ABSOLUE :
+Tu as un document ou une image en pièce jointe. Applique ces règles sans exception :
+- Lis le document attentivement même si la qualité est faible, flou, ou pris en photo
+- Tente de lire TOUS les champs visibles — ne déclare JAMAIS un champ "illisible" sans avoir vraiment essayé
+- Sur un ticket de caisse, les montants apparaissent souvent 2 à 3 fois (ligne article, sous-total, total) — utilise ces répétitions pour confirmer chaque valeur
+- Si tu es incertain d'une valeur, donne quand même ta meilleure estimation suivie de [?]
+- N'écris jamais "contenu non lisible", "document vide" ou "impossible à lire" — fais toujours de ton mieux`
+    : ''
+
+  const fullText = textBlocks.length > 0
+    ? baseText + ocrInstruction + '\n\n' + textBlocks.join('\n\n')
+    : baseText + ocrInstruction
+
+  // Construire le contenu utilisateur (texte + images vision + documents PDF scannés)
+  const userContent = hasMultimodal
+    ? [{ type: 'text', text: fullText }, ...visionBlocks, ...documentBlocks]
+    : fullText
+
+  const messages = [
+    { role: 'system', content: agent.systemPrompt },
+    { role: 'user',   content: userContent }
+  ]
+
+  // Headers additionnels si PDF scanné présent (OCR natif Claude via beta)
+  const extraHeaders = documentBlocks.length > 0
+    ? { 'anthropic-beta': 'pdfs-2024-09-25' }
+    : {}
+
+  let excelBuffer   = null
+  let excelFilename = null
+  let reply         = ''
+
+  // ── Boucle tool calls (max 5 tours) ────────────────────────────────────
+  for (let turn = 0; turn < 5; turn++) {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization':  `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type':   'application/json',
+        'HTTP-Referer':   'https://atum-five.vercel.app',
+        'X-Title':        'ATUM Gmail Daemon',
+        ...extraHeaders
+      },
+      body: JSON.stringify({
+        model:      'anthropic/claude-sonnet-4-6',
+        max_tokens: 2048,
+        tools:      [GENERATE_EXCEL_TOOL],
+        messages
+      })
+    })
+    const data = await res.json()
+    if (data.error) throw new Error(`OpenRouter: ${data.error.message}`)
+
+    const choice  = data.choices?.[0]
+    const msg     = choice?.message
+    const finish  = choice?.finish_reason
+
+    // ── Réponse finale texte ──────────────────────────────────────────────
+    if (finish !== 'tool_calls' && !msg?.tool_calls?.length) {
+      reply = msg?.content || ''
+      break
+    }
+
+    // ── L'agent appelle un tool ───────────────────────────────────────────
+    messages.push(msg)  // ajouter le message assistant avec tool_calls
+
+    const toolResults = []
+    for (const tc of (msg.tool_calls || [])) {
+      if (tc.function?.name === 'generate_excel') {
+        try {
+          const args = JSON.parse(tc.function.arguments)
+          const wb = XLSX.utils.book_new()
+          for (const sheet of (args.sheets || [])) {
+            const wsData = [sheet.headers || [], ...(sheet.rows || [])]
+            const ws = XLSX.utils.aoa_to_sheet(wsData)
+            XLSX.utils.book_append_sheet(wb, ws, (sheet.name || 'Sheet1').slice(0, 31))
+          }
+          excelBuffer   = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+          excelFilename = (args.filename || 'reponse').replace(/\.xlsx$/i, '') + '.xlsx'
+          console.log(`[Gmail] 📊 Excel généré : ${excelFilename} (${excelBuffer.length} octets)`)
+          toolResults.push({
+            tool_call_id: tc.id,
+            role:         'tool',
+            content:      `✅ Excel généré : ${excelFilename} — sera envoyé en pièce jointe`
+          })
+        } catch (e) {
+          console.error(`[Gmail] ❌ generate_excel error : ${e.message}`)
+          toolResults.push({
+            tool_call_id: tc.id,
+            role:         'tool',
+            content:      `❌ Erreur lors de la génération Excel : ${e.message}`
+          })
+        }
+      } else {
+        toolResults.push({
+          tool_call_id: tc.id,
+          role:         'tool',
+          content:      `❌ Tool inconnu : ${tc.function?.name}`
+        })
+      }
+    }
+    messages.push(...toolResults)
   }
 
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://atum-five.vercel.app',
-      'X-Title': 'ATUM Gmail Daemon'
-    },
-    body: JSON.stringify({
-      model: 'anthropic/claude-sonnet-4-6',
-      max_tokens: 2048,
-      messages: [
-        { role: 'system', content: agent.systemPrompt },
-        { role: 'user',   content: userContent }
-      ]
-    })
-  })
-  const data = await res.json()
-  if (data.error) throw new Error(`OpenRouter: ${data.error.message}`)
-  return data.choices?.[0]?.message?.content || ''
+  return { reply, excelBuffer, excelFilename }
 }
 
-// ── Construction de l'email MIME ──────────────────────────────────────────
+// ── Construction de l'email MIME (texte seul) ─────────────────────────────
 function buildMime ({ to, from, subject, body, replyToMsgId, references }) {
   const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`
   let mime = `From: ${from}\r\nTo: ${to}\r\n`
@@ -246,6 +496,35 @@ function buildMime ({ to, from, subject, body, replyToMsgId, references }) {
   if (references)   mime += `References: ${references}\r\n`
   mime += `Subject: Re: ${subjectEncoded}\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n`
   mime += Buffer.from(body).toString('base64')
+  return Buffer.from(mime).toString('base64url')
+}
+
+// ── Construction de l'email MIME avec pièce jointe Excel ─────────────────
+function buildMimeWithAttachment ({ to, from, subject, body, replyToMsgId, references, attachmentBuffer, attachmentFilename }) {
+  const boundary       = `PAI_BOUNDARY_${Date.now()}`
+  const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`
+
+  let mime = `From: ${from}\r\nTo: ${to}\r\n`
+  if (replyToMsgId) mime += `In-Reply-To: ${replyToMsgId}\r\n`
+  if (references)   mime += `References: ${references}\r\n`
+  mime += `Subject: Re: ${subjectEncoded}\r\n`
+  mime += `MIME-Version: 1.0\r\n`
+  mime += `Content-Type: multipart/mixed; boundary="${boundary}"\r\n\r\n`
+
+  // Partie 1 : corps texte
+  mime += `--${boundary}\r\n`
+  mime += `Content-Type: text/plain; charset=UTF-8\r\n`
+  mime += `Content-Transfer-Encoding: base64\r\n\r\n`
+  mime += Buffer.from(body).toString('base64') + '\r\n'
+
+  // Partie 2 : pièce jointe Excel
+  mime += `--${boundary}\r\n`
+  mime += `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n`
+  mime += `Content-Transfer-Encoding: base64\r\n`
+  mime += `Content-Disposition: attachment; filename="${attachmentFilename}"\r\n\r\n`
+  mime += attachmentBuffer.toString('base64') + '\r\n'
+
+  mime += `--${boundary}--`
   return Buffer.from(mime).toString('base64url')
 }
 
@@ -294,21 +573,37 @@ async function main () {
         continue
       }
 
-      const pdfs = await extractPdfAttachments(full.payload, msg.id, token)
-      if (pdfs.length > 0) {
-        console.log(`[Gmail] 📎 ${pdfs.length} PDF(s) détecté(s) : ${pdfs.map(p => p.filename).join(', ')}`)
+      // ── Traitement des pièces jointes ────────────────────────────────────
+      const { textBlocks, visionBlocks, documentBlocks } = await processAttachments(full.payload, msg.id, token)
+      if (textBlocks.length > 0 || visionBlocks.length > 0 || documentBlocks.length > 0) {
+        console.log(`[Gmail] 📎 ${textBlocks.length + visionBlocks.length} pièce(s) jointe(s) traitée(s)${documentBlocks.length > 0 ? ` + ${documentBlocks.length} doc(s) scanné(s)` : ''}`)
       }
 
       console.log(`[Gmail] ✍️  ${agent.name} répond à ${from} (sujet: "${subject}")`)
-      const reply = await callAgent(agent, { from, subject, body }, pdfs)
-      const raw   = buildMime({
-        to: from, from: ownerEmail, subject, body: reply,
-        replyToMsgId: msgId,
-        references: refs ? `${refs} ${msgId}` : msgId
-      })
+      const { reply, excelBuffer, excelFilename } = await callAgent(agent, { from, subject, body }, textBlocks, visionBlocks, documentBlocks)
+
+      // ── Construction et envoi de la réponse ──────────────────────────────
+      const raw = excelBuffer
+        ? buildMimeWithAttachment({
+            to: from, from: ownerEmail, subject, body: reply,
+            replyToMsgId: msgId,
+            references: refs ? `${refs} ${msgId}` : msgId,
+            attachmentBuffer: excelBuffer,
+            attachmentFilename: excelFilename
+          })
+        : buildMime({
+            to: from, from: ownerEmail, subject, body: reply,
+            replyToMsgId: msgId,
+            references: refs ? `${refs} ${msgId}` : msgId
+          })
 
       await gmailPost('/users/me/messages/send', token, { raw, threadId: full.threadId })
-      console.log(`[Gmail] ✅ Réponse envoyée à ${from} par ${agent.name}`)
+      if (excelBuffer) {
+        console.log(`[Gmail] ✅ Réponse + Excel (${excelFilename}) envoyés à ${from} par ${agent.name}`)
+      } else {
+        console.log(`[Gmail] ✅ Réponse envoyée à ${from} par ${agent.name}`)
+      }
+
       recordAgentUsage(agent.id, agent.name)
       // Label visible PAI-Processed + label caché PAI-Seen
       await gmailPost(`/users/me/messages/${msg.id}/modify`, token, { addLabelIds: [labelId, labelSeenId] })

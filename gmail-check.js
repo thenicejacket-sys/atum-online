@@ -168,6 +168,33 @@ async function paddleOCR (imageBuffer, fname) {
   }
 }
 
+// ── Extraction JPEG brut depuis PDF scanné ────────────────────────────────
+// La plupart des PDFs scannés = JPEG(s) wrappé(s) dans un conteneur PDF
+// On extrait les bytes JPEG directement (FF D8 FF ... FF D9) sans aucune dep
+function extractJpegsFromPdf (pdfBuffer) {
+  const images = []
+  let pos = 0
+  while (pos < pdfBuffer.length - 3) {
+    if (pdfBuffer[pos] === 0xFF && pdfBuffer[pos + 1] === 0xD8 && pdfBuffer[pos + 2] === 0xFF) {
+      let end = pos + 3
+      while (end < pdfBuffer.length - 1) {
+        if (pdfBuffer[end] === 0xFF && pdfBuffer[end + 1] === 0xD9) {
+          end += 2
+          const jpeg = pdfBuffer.slice(pos, end)
+          if (jpeg.length > 8000) images.push(jpeg) // < 8KB = thumbnail → ignore
+          pos = end
+          break
+        }
+        end++
+      }
+      if (end >= pdfBuffer.length - 1) break
+    } else {
+      pos++
+    }
+  }
+  return images
+}
+
 // ── Extraction de toutes les pièces jointes (PDF, Excel, Images) ──────────
 async function processAttachments (payload, msgId, token) {
   const found = []
@@ -178,9 +205,8 @@ async function processAttachments (payload, msgId, token) {
   }
   collectParts(payload)
 
-  const textBlocks     = []  // strings à injecter dans le message texte
-  const visionBlocks   = []  // blocs image base64 pour l'API vision
-  const documentBlocks = []  // blocs document PDF pour l'OCR natif Claude
+  const textBlocks   = []  // strings à injecter dans le message texte
+  const visionBlocks = []  // blocs image base64 pour l'API vision (images + PDFs scannés)
 
   for (const part of found) {
     const mime  = (part.mimeType || '').toLowerCase()
@@ -199,7 +225,7 @@ async function processAttachments (payload, msgId, token) {
 
       // ── PDF ──
       if (mime === 'application/pdf' || fname.toLowerCase().endsWith('.pdf')) {
-        // Essai 1 : pdf-parse (couche texte native — rapide, fiable sur PDFs bien formés)
+        // Essai 1 : pdf-parse (couche texte native — PDFs bien formés)
         let pdfTextOk = false
         try {
           const parsed  = await pdfParse(data)
@@ -209,14 +235,35 @@ async function processAttachments (payload, msgId, token) {
             pdfTextOk = true
           }
         } catch {}
+
         if (!pdfTextOk) {
-          // Essai 2 : document block Claude (OCR natif Anthropic pour PDFs scannés)
-          textBlocks.push(`[PDF: ${fname}] — document scanné, analyse visuelle activée — je fais de mon mieux même si l'image n'est pas parfaite`)
-          documentBlocks.push({
-            type: 'document',
-            source: { type: 'base64', media_type: 'application/pdf', data: data.toString('base64') }
-          })
-          console.log(`[Gmail] 🔍 PDF scanné : ${fname} — bloc document activé`)
+          // Essai 2 : extraction JPEG brut (PDF scanné = JPEG enveloppé dans PDF)
+          // ⚠️ Les document blocks Anthropic ne fonctionnent PAS via OpenRouter — on utilise ce chemin
+          const jpegs = extractJpegsFromPdf(data)
+          if (jpegs.length > 0) {
+            console.log(`[Gmail] 🔍 PDF scanné ${fname} : ${jpegs.length} image(s) JPEG extraite(s)`)
+            for (const jpeg of jpegs) {
+              const processed = await preprocessForOCR(jpeg)
+              const ocrText   = await paddleOCR(processed, fname)
+              visionBlocks.push({
+                type: 'image_url',
+                image_url: { url: `data:image/jpeg;base64,${processed.toString('base64')}` }
+              })
+              if (ocrText) {
+                textBlocks.push(
+                  `[PDF scanné: ${fname} — texte extrait par OCR]\n` +
+                  `(Texte brut, peut contenir des erreurs — utilise l'image ET ce texte pour confirmer.)\n` +
+                  `---\n${ocrText}`
+                )
+              } else {
+                textBlocks.push(`[PDF scanné: ${fname} — analyse visuelle activée]`)
+              }
+            }
+          } else {
+            // Aucun JPEG trouvé dans le PDF (ex: PDF texte très court, ou format inhabituel)
+            textBlocks.push(`[PDF: ${fname}] — document scanné, aucune image extractible. Analyse du contenu visuel non disponible dans ce canal.`)
+            console.log(`[Gmail] ⚠️  PDF scanné ${fname} : aucun JPEG extractible`)
+          }
         }
 
       // ── Excel ──
@@ -270,7 +317,7 @@ async function processAttachments (payload, msgId, token) {
     }
   }
 
-  return { textBlocks, visionBlocks, documentBlocks }
+  return { textBlocks, visionBlocks }
 }
 
 function getHeader (headers, name) {
@@ -355,10 +402,9 @@ const GENERATE_EXCEL_TOOL = {
 }
 
 // ── Appel Claude via OpenRouter API avec support tools + vision + documents ─
-async function callAgent (agent, email, textBlocks, visionBlocks, documentBlocks) {
-  textBlocks     = textBlocks     || []
-  visionBlocks   = visionBlocks   || []
-  documentBlocks = documentBlocks || []
+async function callAgent (agent, email, textBlocks, visionBlocks) {
+  textBlocks   = textBlocks   || []
+  visionBlocks = visionBlocks || []
 
   const baseText = `Tu as reçu un email professionnel${textBlocks.length > 0 ? ` avec pièce(s) jointe(s)` : ''}. Réponds directement, sans commenter ta démarche.
 
@@ -376,10 +422,9 @@ RÈGLES DE FORMAT ABSOLUES :
 - Phrases courtes, directes, humaines
 - Salutation naturelle + signature "${agent.name}"`
 
-  // Injecter les blocs texte (PDF, Excel extraits)
-  const hasMultimodal = visionBlocks.length > 0 || documentBlocks.length > 0
+  const hasMultimodal = visionBlocks.length > 0
 
-  // Instruction OCR forcée quand une image/document est joint
+  // Instruction OCR forcée quand une image est jointe
   const ocrInstruction = hasMultimodal
     ? `\n\nINSTRUCTION LECTURE DOCUMENT — PRIORITÉ ABSOLUE :
 Tu as un document ou une image en pièce jointe. Applique ces règles sans exception :
@@ -394,20 +439,14 @@ Tu as un document ou une image en pièce jointe. Applique ces règles sans excep
     ? baseText + ocrInstruction + '\n\n' + textBlocks.join('\n\n')
     : baseText + ocrInstruction
 
-  // Construire le contenu utilisateur (texte + images vision + documents PDF scannés)
   const userContent = hasMultimodal
-    ? [{ type: 'text', text: fullText }, ...visionBlocks, ...documentBlocks]
+    ? [{ type: 'text', text: fullText }, ...visionBlocks]
     : fullText
 
   const messages = [
     { role: 'system', content: agent.systemPrompt },
     { role: 'user',   content: userContent }
   ]
-
-  // Headers additionnels si PDF scanné présent (OCR natif Claude via beta)
-  const extraHeaders = documentBlocks.length > 0
-    ? { 'anthropic-beta': 'pdfs-2024-09-25' }
-    : {}
 
   let excelBuffer   = null
   let excelFilename = null
@@ -422,7 +461,6 @@ Tu as un document ou une image en pièce jointe. Applique ces règles sans excep
         'Content-Type':   'application/json',
         'HTTP-Referer':   'https://atum-five.vercel.app',
         'X-Title':        'ATUM Gmail Daemon',
-        ...extraHeaders
       },
       body: JSON.stringify({
         model:      'anthropic/claude-sonnet-4-6',
@@ -574,13 +612,13 @@ async function main () {
       }
 
       // ── Traitement des pièces jointes ────────────────────────────────────
-      const { textBlocks, visionBlocks, documentBlocks } = await processAttachments(full.payload, msg.id, token)
-      if (textBlocks.length > 0 || visionBlocks.length > 0 || documentBlocks.length > 0) {
-        console.log(`[Gmail] 📎 ${textBlocks.length + visionBlocks.length} pièce(s) jointe(s) traitée(s)${documentBlocks.length > 0 ? ` + ${documentBlocks.length} doc(s) scanné(s)` : ''}`)
+      const { textBlocks, visionBlocks } = await processAttachments(full.payload, msg.id, token)
+      if (textBlocks.length > 0 || visionBlocks.length > 0) {
+        console.log(`[Gmail] 📎 ${textBlocks.length + visionBlocks.length} pièce(s) jointe(s) traitée(s)`)
       }
 
       console.log(`[Gmail] ✍️  ${agent.name} répond à ${from} (sujet: "${subject}")`)
-      const { reply, excelBuffer, excelFilename } = await callAgent(agent, { from, subject, body }, textBlocks, visionBlocks, documentBlocks)
+      const { reply, excelBuffer, excelFilename } = await callAgent(agent, { from, subject, body }, textBlocks, visionBlocks)
 
       // ── Construction et envoi de la réponse ──────────────────────────────
       const raw = excelBuffer

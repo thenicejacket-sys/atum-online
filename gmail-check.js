@@ -20,9 +20,10 @@ const GMAIL_TOKEN        = JSON.parse(process.env.GMAIL_TOKEN || '{}')
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
 const MINDEE_API_KEY     = process.env.MINDEE_API_KEY || ''
 
-// Client Mindee — null si clé absente (dégradation gracieuse)
+// Client Mindee V2 — null si clé absente (dégradation gracieuse)
+const MINDEE_MODEL_ID = 'ebee3a4a-342b-4fa7-abef-7f2fee112cac'
 const mindeeClient = MINDEE_API_KEY
-  ? new Mindee.Client({ apiKey: MINDEE_API_KEY })
+  ? new Mindee.ClientV2({ apiKey: MINDEE_API_KEY })
   : null
 const AGENTS_DIR         = path.join(__dirname, 'agents')
 const CONFIG_PATH        = path.join(__dirname, 'gmail-config.json')
@@ -176,47 +177,65 @@ async function paddleOCR (imageBuffer, fname) {
   }
 }
 
-// ── Mindee OCR — spécialisé reçus & factures ──────────────────────────────
-// FinancialDocumentV1 : détecte automatiquement receipt/invoice
+// ── Mindee V2 OCR — spécialisé reçus & factures ────────────────────────────
+// Model: RECIP (ebee3a4a-342b-4fa7-abef-7f2fee112cac) — détecte reçus/factures
 // Extrait : fournisseur, date, HT, TVA, TTC, articles, catégorie
 async function mindeeExtract (fileBuffer, filename) {
   if (!mindeeClient) return null
   try {
-    const src    = mindeeClient.docFromBuffer(fileBuffer, filename)
-    const result = await mindeeClient.parse(Mindee.product.FinancialDocumentV1, src)
-    const pred   = result.document.inference.prediction
+    const input  = new Mindee.BufferInput({ buffer: fileBuffer, filename })
+    const result = await mindeeClient.enqueueAndGetInference(input, { modelId: MINDEE_MODEL_ID })
+    const fields = result.inference.result.fields
 
     const lines = [`[Mindee — ${filename}]`]
-    const add = (label, field) => {
-      const v = field?.value
-      if (v !== null && v !== undefined && String(v).trim() !== '') lines.push(`${label}: ${v}`)
+    const addField = (label, key) => {
+      try {
+        const f = fields.get(key)
+        if (!f) return
+        const v = f.value
+        if (v !== null && v !== undefined && String(v).trim() !== '') lines.push(`${label}: ${v}`)
+      } catch {}
     }
 
-    add('Type',        pred.documentType)
-    add('Catégorie',   pred.category)
-    add('Fournisseur', pred.supplierName)
-    add('Date',        pred.date)
-    add('N° reçu',     pred.receiptNumber)
-    add('N° facture',  pred.invoiceNumber)
-    add('Total HT',    pred.totalNet)
-    add('TVA',         pred.totalTax)
-    add('Total TTC',   pred.totalAmount)
-    add('Pourboire',   pred.tip)
+    addField('Type',        'document_type')
+    addField('Catégorie',   'category')
+    addField('Fournisseur', 'supplier_name')
+    addField('Date',        'date')
+    addField('N° reçu',     'receipt_number')
+    addField('N° facture',  'invoice_number')
+    addField('Total HT',    'total_net')
+    addField('TVA',         'total_tax')
+    addField('Total TTC',   'total_amount')
+    addField('Pourboire',   'tip')
 
-    if (pred.taxes?.length > 0) {
-      pred.taxes.forEach(t => {
-        if (t.value !== null) lines.push(`  TVA ${t.rate ?? '?'}%: ${t.value}`)
-      })
-    }
+    // Détail TVA
+    try {
+      const taxesField = fields.get('taxes')
+      if (taxesField?.items?.length > 0) {
+        taxesField.items.forEach(item => {
+          const rate  = item.fields?.get('rate')?.value
+          const value = item.fields?.get('value')?.value
+          if (value !== null && value !== undefined) {
+            lines.push(`  TVA ${rate ?? '?'}%: ${value}`)
+          }
+        })
+      }
+    } catch {}
 
-    if (pred.lineItems?.length > 0) {
-      lines.push('Articles:')
-      pred.lineItems.forEach(item => {
-        const desc  = item.description || ''
-        const price = item.totalAmount?.value ?? item.unitPrice?.value ?? ''
-        if (desc || price !== '') lines.push(`  - ${desc}: ${price}`)
-      })
-    }
+    // Articles
+    try {
+      const itemsField = fields.get('line_items')
+      if (itemsField?.items?.length > 0) {
+        lines.push('Articles:')
+        itemsField.items.forEach(item => {
+          const desc  = item.fields?.get('description')?.value || ''
+          const price = item.fields?.get('total_amount')?.value
+                     ?? item.fields?.get('unit_price')?.value
+                     ?? ''
+          if (desc || price !== '') lines.push(`  - ${desc}: ${price}`)
+        })
+      }
+    } catch {}
 
     if (lines.length <= 1) return null // Aucune donnée utile
     console.log(`[Mindee] ✅ ${filename} — ${lines.length - 1} champ(s)`)

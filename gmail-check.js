@@ -273,6 +273,50 @@ function extractJpegsFromPdf (pdfBuffer) {
   return images
 }
 
+// ── Parser MIME basique pour emails RFC822 imbriqués (emails transférés) ──
+// Gmail emballe les PJ dans un part message/rfc822 pour les emails "TR:"
+// On parse la structure MIME brute pour en extraire les PDFs et images
+function parseMimeAttachments (rawBytes) {
+  const raw   = rawBytes.toString('latin1')  // latin1 préserve tous les octets
+  const parts = []
+
+  const bMatch = raw.match(/boundary=(?:"([^"]+)"|([^\s;\r\n]+))/i)
+  if (!bMatch) return parts
+  const boundary = (bMatch[1] || bMatch[2]).trim()
+
+  const segments = raw.split('--' + boundary)
+  for (let i = 1; i < segments.length - 1; i++) {
+    const seg    = segments[i]
+    const sepSeq = seg.indexOf('\r\n\r\n') !== -1 ? '\r\n\r\n' : '\n\n'
+    const sepIdx = seg.indexOf(sepSeq)
+    if (sepIdx === -1) continue
+
+    const headers = seg.slice(0, sepIdx)
+    const body    = seg.slice(sepIdx + sepSeq.length)
+
+    const ctMatch  = headers.match(/Content-Type:\s*([^\r\n;]+)/i)
+    const cteMatch = headers.match(/Content-Transfer-Encoding:\s*([^\r\n]+)/i)
+    const fnMatch  = headers.match(/filename\*?=(?:"([^"]+)"|([^;\r\n]+))/i)
+
+    const mime  = (ctMatch?.[1]  || '').trim().toLowerCase()
+    const enc   = (cteMatch?.[1] || '').trim().toLowerCase()
+    const fname = ((fnMatch?.[1] || fnMatch?.[2]) || '').trim()
+
+    if (enc !== 'base64') continue
+    if (!mime.includes('application/pdf') && !mime.startsWith('image/')) continue
+
+    try {
+      const decoded = Buffer.from(body.replace(/[\r\n\s]/g, ''), 'base64')
+      if (decoded.length > 500) {
+        const label = fname || (mime.includes('pdf') ? 'document.pdf' : 'image.jpg')
+        console.log(`[Gmail] 📦 RFC822 imbriqué : ${label} (${mime}, ${(decoded.length / 1024).toFixed(0)} KB)`)
+        parts.push({ mimeType: mime, filename: label, data: decoded })
+      }
+    } catch {}
+  }
+  return parts
+}
+
 // ── Extraction de toutes les pièces jointes (PDF, Excel, Images) ──────────
 async function processAttachments (payload, msgId, token) {
   const found = []
@@ -283,6 +327,40 @@ async function processAttachments (payload, msgId, token) {
   }
   collectParts(payload)
 
+  // ── Emails transférés (TR: / Fwd:) — PJ dans une partie message/rfc822 ──
+  // Gmail n'expose pas les PJ imbriquées comme parts directs dans format=full
+  if (found.length === 0) {
+    const rfc822Parts = []
+    ;(function findRfc822 (part) {
+      if (!part) return
+      if (part.mimeType === 'message/rfc822') rfc822Parts.push(part)
+      if (part.parts) part.parts.forEach(findRfc822)
+    })(payload)
+
+    for (const rfc822 of rfc822Parts) {
+      let rfc822Bytes = null
+      if (rfc822.body?.data) {
+        rfc822Bytes = Buffer.from(rfc822.body.data, 'base64url')
+      } else if (rfc822.body?.attachmentId) {
+        try {
+          const att = await gmailGet(
+            `/users/me/messages/${msgId}/attachments/${rfc822.body.attachmentId}`, token
+          )
+          if (att.data) rfc822Bytes = Buffer.from(att.data, 'base64url')
+        } catch (e) {
+          console.warn(`[Gmail] ⚠️  RFC822 fetch: ${e.message}`)
+        }
+      }
+      if (!rfc822Bytes) continue
+
+      console.log(`[Gmail] 📨 Email transféré détecté — analyse PJ imbriquées (${(rfc822Bytes.length / 1024).toFixed(0)} KB)`)
+      const nested = parseMimeAttachments(rfc822Bytes)
+      for (const a of nested) {
+        found.push({ mimeType: a.mimeType, filename: a.filename, _preData: a.data })
+      }
+    }
+  }
+
   const textBlocks   = []  // strings à injecter dans le message texte
   const visionBlocks = []  // blocs image base64 pour l'API vision (images + PDFs scannés)
 
@@ -291,15 +369,19 @@ async function processAttachments (payload, msgId, token) {
     const fname = part.filename || 'attachment'
 
     try {
-      let raw = part.body?.data
-      if (!raw && part.body?.attachmentId) {
-        const att = await gmailGet(
-          `/users/me/messages/${msgId}/attachments/${part.body.attachmentId}`, token
-        )
-        raw = att.data
+      // Support PJ pré-décodées (extraites d'un RFC822 imbriqué)
+      let data = part._preData || null
+      if (!data) {
+        let raw = part.body?.data
+        if (!raw && part.body?.attachmentId) {
+          const att = await gmailGet(
+            `/users/me/messages/${msgId}/attachments/${part.body.attachmentId}`, token
+          )
+          raw = att.data
+        }
+        if (!raw) continue
+        data = Buffer.from(raw, 'base64url')
       }
-      if (!raw) continue
-      const data = Buffer.from(raw, 'base64url')
 
       // ── PDF ──
       if (mime === 'application/pdf' || fname.toLowerCase().endsWith('.pdf')) {

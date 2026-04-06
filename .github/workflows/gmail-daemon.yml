@@ -34,4 +34,5 @@ jobs:
         env:
           GMAIL_TOKEN: ${{ secrets.GMAIL_TOKEN }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          MINDEE_API_KEY: ${{ secrets.MINDEE_API_KEY }}
         run: node gmail-check.js

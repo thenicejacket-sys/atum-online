@@ -6,6 +6,7 @@
 // Variables d'environnement requises :
 //   GMAIL_TOKEN        — contenu JSON de gmail-token.json
 //   OPENROUTER_API_KEY — clé API OpenRouter (openrouter.ai)
+//   MINDEE_API_KEY     — (optionnel) OCR spécialisé reçus/factures
 
 const fs       = require('fs')
 const os       = require('os')
@@ -13,9 +14,16 @@ const path     = require('path')
 const pdfParse = require('pdf-parse')
 const XLSX     = require('xlsx')
 const sharp    = require('sharp')
+const Mindee   = require('mindee')
 
 const GMAIL_TOKEN        = JSON.parse(process.env.GMAIL_TOKEN || '{}')
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
+const MINDEE_API_KEY     = process.env.MINDEE_API_KEY || ''
+
+// Client Mindee — null si clé absente (dégradation gracieuse)
+const mindeeClient = MINDEE_API_KEY
+  ? new Mindee.Client({ apiKey: MINDEE_API_KEY })
+  : null
 const AGENTS_DIR         = path.join(__dirname, 'agents')
 const CONFIG_PATH        = path.join(__dirname, 'gmail-config.json')
 const LABEL_PROCESSED    = 'PAI-Processed'
@@ -168,6 +176,57 @@ async function paddleOCR (imageBuffer, fname) {
   }
 }
 
+// ── Mindee OCR — spécialisé reçus & factures ──────────────────────────────
+// FinancialDocumentV1 : détecte automatiquement receipt/invoice
+// Extrait : fournisseur, date, HT, TVA, TTC, articles, catégorie
+async function mindeeExtract (fileBuffer, filename) {
+  if (!mindeeClient) return null
+  try {
+    const src    = mindeeClient.docFromBuffer(fileBuffer, filename)
+    const result = await mindeeClient.parse(Mindee.product.FinancialDocumentV1, src)
+    const pred   = result.document.inference.prediction
+
+    const lines = [`[Mindee — ${filename}]`]
+    const add = (label, field) => {
+      const v = field?.value
+      if (v !== null && v !== undefined && String(v).trim() !== '') lines.push(`${label}: ${v}`)
+    }
+
+    add('Type',        pred.documentType)
+    add('Catégorie',   pred.category)
+    add('Fournisseur', pred.supplierName)
+    add('Date',        pred.date)
+    add('N° reçu',     pred.receiptNumber)
+    add('N° facture',  pred.invoiceNumber)
+    add('Total HT',    pred.totalNet)
+    add('TVA',         pred.totalTax)
+    add('Total TTC',   pred.totalAmount)
+    add('Pourboire',   pred.tip)
+
+    if (pred.taxes?.length > 0) {
+      pred.taxes.forEach(t => {
+        if (t.value !== null) lines.push(`  TVA ${t.rate ?? '?'}%: ${t.value}`)
+      })
+    }
+
+    if (pred.lineItems?.length > 0) {
+      lines.push('Articles:')
+      pred.lineItems.forEach(item => {
+        const desc  = item.description || ''
+        const price = item.totalAmount?.value ?? item.unitPrice?.value ?? ''
+        if (desc || price !== '') lines.push(`  - ${desc}: ${price}`)
+      })
+    }
+
+    if (lines.length <= 1) return null // Aucune donnée utile
+    console.log(`[Mindee] ✅ ${filename} — ${lines.length - 1} champ(s)`)
+    return lines.join('\n')
+  } catch (e) {
+    console.error(`[Mindee] ❌ ${filename}: ${e.message}`)
+    return null
+  }
+}
+
 // ── Extraction JPEG brut depuis PDF scanné ────────────────────────────────
 // La plupart des PDFs scannés = JPEG(s) wrappé(s) dans un conteneur PDF
 // On extrait les bytes JPEG directement (FF D8 FF ... FF D9) sans aucune dep
@@ -237,11 +296,14 @@ async function processAttachments (payload, msgId, token) {
         } catch {}
 
         if (!pdfTextOk) {
-          // Essai 2 : extraction JPEG brut (PDF scanné = JPEG enveloppé dans PDF)
-          // ⚠️ Les document blocks Anthropic ne fonctionnent PAS via OpenRouter — on utilise ce chemin
+          // Essai 2 : Mindee — OCR spécialisé reçus/factures (meilleure précision)
+          const mindeeText = await mindeeExtract(data, fname)
+          if (mindeeText) textBlocks.push(mindeeText)
+
+          // Essai 3 : extraction JPEG brut + Vision (complément visuel)
           const jpegs = extractJpegsFromPdf(data)
           if (jpegs.length > 0) {
-            console.log(`[Gmail] 🔍 PDF scanné ${fname} : ${jpegs.length} image(s) JPEG extraite(s)`)
+            console.log(`[Gmail] 🔍 PDF scanné ${fname} : ${jpegs.length} JPEG + Mindee=${!!mindeeText}`)
             for (const jpeg of jpegs) {
               const processed = await preprocessForOCR(jpeg)
               const ocrText   = await paddleOCR(processed, fname)
@@ -249,20 +311,18 @@ async function processAttachments (payload, msgId, token) {
                 type: 'image_url',
                 image_url: { url: `data:image/jpeg;base64,${processed.toString('base64')}` }
               })
-              if (ocrText) {
+              // PaddleOCR seulement si Mindee n'a rien donné (évite la redondance)
+              if (ocrText && !mindeeText) {
                 textBlocks.push(
-                  `[PDF scanné: ${fname} — texte extrait par OCR]\n` +
-                  `(Texte brut, peut contenir des erreurs — utilise l'image ET ce texte pour confirmer.)\n` +
+                  `[PDF scanné: ${fname} — OCR brut]\n` +
+                  `(Utilise l'image ET ce texte pour confirmer chaque valeur.)\n` +
                   `---\n${ocrText}`
                 )
-              } else {
-                textBlocks.push(`[PDF scanné: ${fname} — analyse visuelle activée]`)
               }
             }
-          } else {
-            // Aucun JPEG trouvé dans le PDF (ex: PDF texte très court, ou format inhabituel)
-            textBlocks.push(`[PDF: ${fname}] — document scanné, aucune image extractible. Analyse du contenu visuel non disponible dans ce canal.`)
-            console.log(`[Gmail] ⚠️  PDF scanné ${fname} : aucun JPEG extractible`)
+          } else if (!mindeeText) {
+            textBlocks.push(`[PDF: ${fname}] — document scanné, aucune donnée extractible`)
+            console.log(`[Gmail] ⚠️  PDF scanné ${fname} : Mindee KO + aucun JPEG`)
           }
         }
 
@@ -285,31 +345,36 @@ async function processAttachments (payload, msgId, token) {
 
       // ── Images (JPEG, PNG, GIF, WebP) ──
       } else if (mime.startsWith('image/')) {
-        // Étape 1 : Sharp preprocessing (rotation EXIF, resize 2400px, grayscale, contraste, netteté)
+        // Étape 1 : Mindee — OCR spécialisé reçus/factures (données structurées)
+        const mindeeText = await mindeeExtract(data, fname)
+        if (mindeeText) textBlocks.push(mindeeText)
+
+        // Étape 2 : Sharp preprocessing (rotation EXIF, resize 2400px, grayscale, netteté)
         const processed = await preprocessForOCR(data)
 
-        // Étape 2 : PaddleOCR v4 — extrait le texte brut de l'image prétraitée
+        // Étape 3 : PaddleOCR — texte brut complémentaire (si Mindee insuffisant)
         const ocrText = await paddleOCR(processed, fname)
 
-        // Étape 3 : vision block — envoyer l'image à Claude pour lecture visuelle directe
+        // Étape 4 : vision block — Claude voit l'image directement
         visionBlocks.push({
           type: 'image_url',
           image_url: { url: `data:image/jpeg;base64,${processed.toString('base64')}` }
         })
 
-        // Étape 4 : injecter le texte OCR brut (aide Claude à confirmer les valeurs)
-        // Claude reçoit ainsi deux sources : l'image ET le texte → recoupement automatique
-        if (ocrText) {
+        // PaddleOCR seulement si Mindee n'a rien extrait
+        if (ocrText && !mindeeText) {
           textBlocks.push(
-            `[Image: ${fname} — texte extrait par OCR]\n` +
-            `(Texte brut — peut contenir des erreurs de reconnaissance. ` +
-            `Utilise l'image ET ce texte pour confirmer chaque valeur.)\n` +
+            `[Image: ${fname} — OCR brut]\n` +
+            `(Utilise l'image ET ce texte pour confirmer chaque valeur.)\n` +
             `---\n${ocrText}`
           )
-        } else {
-          textBlocks.push(`[Image jointe: ${fname} — optimisée OCR]`)
+        } else if (!ocrText && !mindeeText) {
+          textBlocks.push(`[Image jointe: ${fname}]`)
         }
-        console.log(`[Gmail] 🖼️  Image traitée : ${fname} — vision + PaddleOCR${ocrText ? ` (${ocrText.length} chars)` : ' (OCR échoué → vision seule)'}`)
+
+        const src = [mindeeText ? 'Mindee' : '', ocrText && !mindeeText ? 'PaddleOCR' : '', 'Vision']
+          .filter(Boolean).join(' + ')
+        console.log(`[Gmail] 🖼️  Image : ${fname} — ${src}`)
       }
 
     } catch (e) {

@@ -769,6 +769,14 @@ async function main () {
       const refs    = getHeader(hdrs, 'References')
       const body    = extractText(full.payload)
 
+      // ── Ignorer les emails envoyés par le daemon lui-même (anti-boucle) ──
+      const fromEmail = from.replace(/.*<(.+)>.*/, '$1').trim() || from.trim()
+      if (fromEmail === ownerEmail || from.includes(ownerEmail)) {
+        console.log(`[Gmail] 🚫 Email auto-envoyé ignoré (anti-boucle) — ${from}`)
+        await gmailPost(`/users/me/messages/${msg.id}/modify`, token, { addLabelIds: [labelSeenId] })
+        continue
+      }
+
       const agent = detectAgent(subject, agents)
       if (!agent) {
         // Aucun agent ne correspond — label caché uniquement (pas de PAI-Processed visible)

@@ -6,15 +6,17 @@
  * API identique à l'ancienne version — transparent pour les agents.
  */
 
-const SUPABASE_URL = 'https://ataxqfqlprndcjisepbn.supabase.co'
-const SUPABASE_KEY = 'sb_publishable_qZMWIStnnUbnmdVxKB4DyA_Bpj10XoY'
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://ataxqfqlprndcjisepbn.supabase.co'
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || ''
 const REST = `${SUPABASE_URL}/rest/v1`
 
+// Service_role key for all operations (server-side only, bypasses RLS)
 const BASE_HEADERS = {
-  'apikey': SUPABASE_KEY,
-  'Authorization': `Bearer ${SUPABASE_KEY}`,
+  'apikey': SUPABASE_SERVICE_KEY,
+  'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
   'Content-Type': 'application/json',
 }
+const WRITE_HEADERS = BASE_HEADERS
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -102,7 +104,7 @@ async function saveToKnowledge(agentId, content, source, topic, tags) {
     try {
       const res = await fetch(`${REST}/knowledge`, {
         method: 'POST',
-        headers: { ...BASE_HEADERS, 'Prefer': 'return=minimal' },
+        headers: { ...WRITE_HEADERS, 'Prefer': 'return=minimal' },
         body: JSON.stringify(batch),
       })
       if (res.ok) saved += batch.length
@@ -145,7 +147,7 @@ async function deleteFromKnowledge(agentId, source) {
   try {
     const res = await fetch(
       `${REST}/knowledge?agent_id=eq.${encodeURIComponent(agentId)}&source=eq.${encodeURIComponent(source)}`,
-      { method: 'DELETE', headers: BASE_HEADERS }
+      { method: 'DELETE', headers: WRITE_HEADERS }
     )
     // Compter restants
     const listRes = await fetch(
@@ -199,7 +201,7 @@ async function reflectAndLearn(agentId, learnings) {
       }
       const res = await fetch(`${REST}/knowledge`, {
         method: 'POST',
-        headers: { ...BASE_HEADERS, 'Prefer': 'return=minimal' },
+        headers: { ...WRITE_HEADERS, 'Prefer': 'return=minimal' },
         body: JSON.stringify([row]),
       })
       if (res.ok) saved++

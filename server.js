@@ -11,7 +11,7 @@ const _AGENT_NAMES = {
   'nathan':'N8than','fabrice':'Fabrice','christian':'Christian','frank':'Frank',
   'sophie':'Sophie','norman':'Norman','magali':'Magalie','catalin':'Catalin',
   'lionel':'Lionel','axelle':'Axelle','aziza':'Aziza','julie':'Julie','josie':'Julie',
-  'max':'Max','telos':'Telos','stellar':'Stellar','irma':'Irma','victor':'Victor',
+  'max':'Max','telos':'Telos','stellar':'Stellar','irma':'Irma','victor':'Victor','anas':'Anas',
 }
 function recordAgentUsage (agentId) {
   if (!agentId) return
@@ -214,6 +214,42 @@ const PAI_TOOLS = [
       type: 'object',
       properties: {
         agent_id: { type: 'string', description: 'The agent ID' }
+      },
+      required: ['agent_id']
+    }
+  },
+  // ── Agent self-learning tools ─────────────────────────────────────────────
+  {
+    name: 'reflect_and_learn',
+    description: 'Save learnings from this interaction for self-improvement. Call at the end of each substantive interaction to capture corrections, user preferences, and new knowledge. Learnings are persistent and will be available in future conversations.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Your agent ID' },
+        learnings: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              category: { type: 'string', enum: ['correction', 'preference', 'knowledge'], description: 'correction = user corrected you, preference = how user likes things done, knowledge = new facts/techniques learned' },
+              content: { type: 'string', description: 'The learning content — concise, actionable, specific' },
+              topic: { type: 'string', description: 'Topic area (e.g. "fiscalité", "format réponse", "client ABC")' },
+            },
+            required: ['category', 'content']
+          },
+          description: 'Array of learnings from this interaction (max 5)'
+        }
+      },
+      required: ['agent_id', 'learnings']
+    }
+  },
+  {
+    name: 'get_agent_profile',
+    description: 'Get the learning profile and progression stats for an agent. Shows total learnings by category, KB entries, and last activity.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'The agent ID to get profile for' }
       },
       required: ['agent_id']
     }
@@ -552,6 +588,24 @@ async function executeTool(name, input, workspacePath, streamFn, apiToken = null
         return `KB for ${agent_id}: ${info.totalChunks} chunks total.\n\nIndexed sources:\n${srcLines.join('\n')}\n\nFile: ${info.storagePath}`
       }
 
+      // ── Agent self-learning ──────────────────────────────────────────────
+      case 'reflect_and_learn': {
+        const { agent_id, learnings } = input
+        const result = await kb.reflectAndLearn(agent_id, (learnings || []).slice(0, 5))
+        return `Auto-apprentissage : ${result.saved} learning(s) sauvegardé(s), ${result.skipped} ignoré(s) (doublons ou trop courts).`
+      }
+
+      case 'get_agent_profile': {
+        const { agent_id } = input
+        const profile = await kb.getAgentProfile(agent_id)
+        const catLines = Object.entries(profile.by_category).map(([cat, n]) => `  - ${cat}: ${n}`).join('\n')
+        return `Profil de progression de ${agent_id}:\n` +
+          `  Total learnings: ${profile.total_learnings}\n` +
+          (catLines ? `  Par catégorie:\n${catLines}\n` : '') +
+          `  Entrées KB (hors learnings): ${profile.total_kb_entries}\n` +
+          `  Dernier apprentissage: ${profile.last_learning || 'jamais'}`
+      }
+
       // ── Document generation ───────────────────────────────────────────────
       case 'generate_pdf': {
         const PDFDocument = require('pdfkit')
@@ -831,7 +885,7 @@ const SKILL_CONTEXT_ALIASES = {
 }
 
 function findAgentFile(agentId) {
-  const dirs = [CUSTOM_AGENTS_DIR, AGENTS_DIR]
+  const dirs = [CUSTOM_AGENTS_DIR, AGENTS_DIR, path.join(__dirname, 'agents')]
   const idLower = agentId.toLowerCase()
   for (const dir of dirs) {
     try {
@@ -1069,6 +1123,8 @@ function toolDisplayName(toolName, input) {
     case 'search_knowledge': return `KB Search: ${(input?.query || '').slice(0, 40)}...`
     case 'save_to_knowledge': return `KB Save: ${(input?.source || '').slice(0, 40)}`
     case 'list_knowledge': return `KB List: ${input?.agent_id || ''}`
+    case 'reflect_and_learn': return `Learning: ${(input?.learnings || []).length} insight(s)`
+    case 'get_agent_profile': return `Profile: ${input?.agent_id || ''}`
     default: return `${toolName} ${short}`
   }
 }
@@ -1209,6 +1265,13 @@ app.post('/api/chat', async (req, res) => {
   const sendStream = (data) => {
     if (!res.writableEnded) res.write(JSON.stringify(data) + '\n')
   }
+  // Envoie le signal cloche puis ferme le stream
+  const endStream = () => {
+    if (!res.writableEnded) {
+      res.write(JSON.stringify({ type: 'bell', timestamp: Date.now() }) + '\n')
+      res.end()
+    }
+  }
 
   // ── Extract request body ──────────────────────────────────────────────────
   const { agentId, systemPrompt, messages, workspacePath, attachments, model: requestModel } = req.body
@@ -1318,7 +1381,8 @@ app.post('/api/chat', async (req, res) => {
         }
       } catch {}
 
-      const fullSystem = ((realSystemPrompt || '') + baseContext + chatRules).trim() || undefined
+      const learningsContextOR = await kb.getRecentLearnings(agentId || 'atum', 2000)
+      const fullSystem = ((realSystemPrompt || '') + baseContext + learningsContextOR + chatRules).trim() || undefined
 
       const MAX_HISTORY = 10
       let trimmedMsgs = messages || []
@@ -1364,7 +1428,7 @@ app.post('/api/chat', async (req, res) => {
       }
     }
     currentAbortController = null
-    if (!res.writableEnded) res.end()
+    endStream()
     return
   }
 
@@ -1423,7 +1487,8 @@ app.post('/api/chat', async (req, res) => {
       } catch {}
 
       const kbContext = buildKBContext(agentId || 'pai')
-      const fullSystem = ((realSystemPrompt || '') + baseContext + wsContext + kbContext + chatRules).trim() || undefined
+      const learningsContext = await kb.getRecentLearnings(agentId || 'pai', 2000)
+      const fullSystem = ((realSystemPrompt || '') + baseContext + wsContext + kbContext + learningsContext + chatRules).trim() || undefined
 
       // Trim conversation history
       const MAX_HISTORY = 10
@@ -1668,7 +1733,7 @@ app.post('/api/chat', async (req, res) => {
         clearInterval(_progressIntervalId)
         currentAbortController = null
         sendStream({ type: 'end', code: 1, aborted: true, timestamp: Date.now() })
-        if (!res.writableEnded) res.end()
+        endStream()
         return
       }
 
@@ -1712,7 +1777,7 @@ app.post('/api/chat', async (req, res) => {
       emitTUIStatus(sendStream, 'Done')
       currentAbortController = null
 
-      if (!res.writableEnded) res.end()
+      endStream()
       return
 
     } catch (err) {
@@ -1721,7 +1786,7 @@ app.post('/api/chat', async (req, res) => {
       currentAbortController = null
       if (abortController.signal.aborted) {
         sendStream({ type: 'end', code: 1, aborted: true, timestamp: Date.now() })
-        if (!res.writableEnded) res.end()
+        endStream()
         return
       }
 
@@ -1751,7 +1816,7 @@ app.post('/api/chat', async (req, res) => {
       if (isAuth401) {
         sendStream({ type: 'stream-text', data: '\nInvalid API key. Please check your key and try again.', timestamp: Date.now() })
         sendStream({ type: 'end', code: 1, timestamp: Date.now() })
-        if (!res.writableEnded) res.end()
+        endStream()
         return
       }
 
@@ -1760,7 +1825,7 @@ app.post('/api/chat', async (req, res) => {
         sendStream({ type: 'stream-text', data: '\nRate limit reached. Wait a few minutes and try again.', timestamp: Date.now() })
         sendStream({ type: 'end', code: 0, timestamp: Date.now() })
         currentAbortController = null
-        if (!res.writableEnded) res.end()
+        endStream()
         return
       }
 
@@ -1768,7 +1833,7 @@ app.post('/api/chat', async (req, res) => {
       sendStream({ type: 'stderr', data: explainError('API', err) + '\n', timestamp: Date.now() })
       sendStream({ type: 'stream-text', data: `\nError: ${explainError('API', err)}`, timestamp: Date.now() })
       sendStream({ type: 'end', code: 1, timestamp: Date.now() })
-      if (!res.writableEnded) res.end()
+      endStream()
       return
     }
   } // end retry loop
@@ -2045,17 +2110,23 @@ app.get('*', (req, res) => {
 })
 
 // ── Start server ────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`ATUM Online server running on port ${PORT}`)
-  console.log(`Data directory: ${DATA_DIR}`)
-  console.log(`Agents directory: ${AGENTS_DIR}`)
-  console.log(`Custom agents directory: ${CUSTOM_AGENTS_DIR}`)
-  // Create data directories if they don't exist
-  for (const dir of [DATA_DIR, AGENTS_DIR, CUSTOM_AGENTS_DIR, DATABASES_DIR]) {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true })
-      console.log(`  Created: ${dir}`)
-    }
-  }
-  startGmailDaemonWeb()
-})
+// Create data directories if they don't exist (silently skip on read-only FS like Vercel)
+for (const dir of [DATA_DIR, AGENTS_DIR, CUSTOM_AGENTS_DIR, DATABASES_DIR]) {
+  try {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  } catch {}
+}
+
+// ── Vercel serverless: export the Express app ─────────────────────────────
+module.exports = app
+
+// ── Local dev: start listening only when run directly ─────────────────────
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`ATUM Online server running on port ${PORT}`)
+    console.log(`Data directory: ${DATA_DIR}`)
+    console.log(`Agents directory: ${AGENTS_DIR}`)
+    console.log(`Custom agents directory: ${CUSTOM_AGENTS_DIR}`)
+    startGmailDaemonWeb()
+  })
+}

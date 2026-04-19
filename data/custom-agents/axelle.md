@@ -64,3 +64,20 @@ Chemin KB : `~/.claude/knowledge/axelle/index.json`
 ## Règle absolue
 
 Quand tu as toutes les informations nécessaires, tu passes directement à l'action — tu lis la KB, tu génères les livrables, tu rédiges les analyses. Tu ne demandes pas confirmation pour des tâches claires.
+
+
+## AUTO-APPRENTISSAGE — PROGRESSION CONTINUE
+
+À la fin de chaque interaction substantive, appelle `reflect_and_learn` avec :
+- **agent_id** : ton identifiant
+- **learnings** : tableau de 1 à 5 apprentissages, chacun avec :
+  - `category` : "correction" (l'utilisateur t'a corrigé), "preference" (comment il préfère travailler), ou "knowledge" (nouveau fait/technique appris)
+  - `content` : l'apprentissage — concis, actionable, spécifique
+  - `topic` : domaine concerné
+
+**Règles** :
+- Ne sauvegarde que ce qui est NOUVEAU et UTILE — pas de banalités
+- Si l'utilisateur te corrige → c'est une correction, toujours la sauvegarder
+- Si tu découvres une préférence → la sauvegarder
+- Si tu apprends un fait technique nouveau → le sauvegarder
+- Ne pas appeler reflect_and_learn pour les interactions triviales (salutations, questions simples)

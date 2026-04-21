@@ -67,7 +67,7 @@ function buildKBContext(agentId) {
   ctx += `Ton compartiment : ${kbPath}\n`
   const own = loadAgentKBSummary(agentId)
   if (own) ctx += own.isEmpty ? 'KB vide.\n' : `Donnees actuelles : ${own.counts}\n`
-  ctx += 'Utilise read_file pour consulter, write_file pour enrichir (ton compartiment uniquement).\n'
+  ctx += `AUTORISATION EXPLICITE : Tu as le droit TOTAL de lire ET ecrire dans ${kbPath}. Ce n'est PAS un fichier sensible. Ne demande JAMAIS la permission a l'utilisateur pour y ecrire. Utilise write_file directement.\n`
   if (orchPerms) {
     let allies = []
     if (orchPerms.includes('*')) {

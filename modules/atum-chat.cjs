@@ -32,6 +32,26 @@ const {
   MAX_CONTEXT_TOKENS,
 } = require('./atum-tools.cjs')
 
+// ── Fast path detection — simple messages get lightweight context + Haiku ────
+// Messages simples → Haiku (rapide, pas cher). Tout le reste → Sonnet (capable).
+// Critères : pas de pièces jointes, message court, pas de mots-clés complexes.
+function isSimpleMessage(messages, attachments) {
+  if (attachments && attachments.length > 0) return false
+  if (!messages || messages.length === 0) return false
+  const lastMsg = messages[messages.length - 1]
+  const text = (typeof lastMsg.content === 'string' ? lastMsg.content : '').trim().toLowerCase()
+  if (text.length > 120) return false
+  // Mots-clés qui déclenchent le chemin complet (Sonnet + outils)
+  const complexKeywords = /\b(analyse|recherche|crée|génère|écris|rédige|calcul|compare|explique en détail|diagnostic|audit|rapport|document|fichier|code|refactor|debug|investig|planifi|stratég|architec|implémente|optimise|résous|corrige)\b/i
+  if (complexKeywords.test(text)) return false
+  // Greetings et réponses courtes conversationnelles
+  const simple = /^(salut|bonjour|bonsoir|hello|hi|hey|coucou|yo|ça va|ca va|comment vas|quoi de neuf|merci|ok|oui|non|d'accord|parfait|super|cool|génial|genial|au revoir|à bientôt|bonne nuit|bonne journée|et toi|nickel|top|bien reçu|c'est noté|entendu|compris|pas de souci|avec plaisir|je comprends|intéressant|ah bon|vraiment|exactement|tout à fait|bien sûr|évidemment)\b/i
+  if (simple.test(text)) return true
+  // Messages courts sans complexité (<40 chars)
+  if (text.length < 40) return true
+  return false
+}
+
 // ── Shared abort controller (one per active request) ─────────────────────────
 let currentAbortController = null
 
@@ -64,6 +84,37 @@ function registerChatRoute(app, kb) {
 
     // ── Record agent usage (fire & forget) ────────────────────────────────
     recordAgentUsage(agentId)
+
+    // ── FAST PATH: Simple messages → lightweight context, no tools, Haiku ─
+    if (isSimpleMessage(messages, attachments)) {
+      try {
+        const Anthropic = require('@anthropic-ai/sdk')
+        const client = new Anthropic({ apiKey: token })
+        const { prompt: realSystemPrompt } = loadAgentSystemPrompt(agentId, systemPrompt)
+        const now = new Date()
+        const daysFR = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi']
+        const monthsFR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+        const lightContext = `\n\nNous sommes le ${daysFR[now.getDay()]} ${now.getDate()} ${monthsFR[now.getMonth()]} ${now.getFullYear()}, ${now.toLocaleTimeString('fr-FR')}.`
+        const lightSystem = ((realSystemPrompt || '') + lightContext).trim()
+
+        sendStream({ type: 'start', timestamp: Date.now() })
+        sendStream({ type: 'json-event', event: { type: 'system', subtype: 'init', model: 'claude-haiku-4-5-20251001', permissionMode: 'fast' }, timestamp: Date.now() })
+
+        const response = await client.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1024,
+          system: lightSystem,
+          messages: messages.slice(-4).map(m => ({ role: m.role, content: m.content })),
+        })
+
+        const text = response.content.map(b => b.text || '').join('')
+        sendStream({ type: 'stream-text', data: text, timestamp: Date.now() })
+        endStream()
+        return
+      } catch (fastErr) {
+        sendStream({ type: 'stderr', data: `[FAST] Fallback: ${fastErr.message}\n`, timestamp: Date.now() })
+      }
+    }
 
     const abortController = new AbortController()
     currentAbortController = abortController

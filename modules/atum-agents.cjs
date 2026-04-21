@@ -4,6 +4,7 @@
 // Purpose  : Agent file resolution, model tier mapping, system prompt loading
 // Owner    : Aymeric
 // Source   : server.js lines 872-945
+// Updated  : v4.0.3 frontmatter support (isolation, skills, permissions)
 // ============================================================================
 
 const path = require('path')
@@ -49,6 +50,37 @@ function resolveModel(modelKey) {
   return 'claude-sonnet-4-6'
 }
 
+// ── Parse frontmatter YAML block ─────────────────────────────────────────────
+function parseFrontmatter(raw) {
+  const fmMatch = raw.match(/^---\n([\s\S]*?)\n---/)
+  if (!fmMatch) return {}
+  const fm = fmMatch[1]
+  const result = {}
+  const keys = ['model', 'isolation', 'color', 'name', 'description']
+  for (const key of keys) {
+    const m = fm.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))
+    if (m) result[key] = m[1].trim()
+  }
+  // Parse skills: array (YAML list)
+  const skillsMatch = fm.match(/^skills:\n((?:\s+-\s+.+\n?)+)/m)
+  if (skillsMatch) {
+    result.skills = skillsMatch[1].match(/^\s+-\s+(.+)$/gm)
+      ?.map(s => s.replace(/^\s+-\s+/, '').trim()) || []
+  }
+  // Parse permissions: block
+  const permsMatch = fm.match(/^permissions:\n((?:\s+.+\n?)+)/m)
+  if (permsMatch) {
+    const allowMatch = permsMatch[1].match(/allow:\n((?:\s+-\s+.+\n?)+)/m)
+    if (allowMatch) {
+      result.permissions = {
+        allow: allowMatch[1].match(/^\s+-\s+"?(.+?)"?\s*$/gm)
+          ?.map(s => s.replace(/^\s+-\s+"?/, '').replace(/"?\s*$/, '').trim()) || []
+      }
+    }
+  }
+  return result
+}
+
 function loadAgentSystemPrompt(agentId, fallbackPrompt) {
   try {
     if (agentId === 'pai') {
@@ -59,29 +91,36 @@ function loadAgentSystemPrompt(agentId, fallbackPrompt) {
         : (fs.existsSync(skillPath) ? skillPath : null)
       if (sourcePath) {
         const raw = fs.readFileSync(sourcePath, 'utf8')
-        const modelMatch = raw.match(/^model:\s*(.+)$/m)
-        const modelKey = modelMatch ? modelMatch[1].trim() : null
-        return { prompt: raw.replace(/^---[\s\S]*?---\n?/, '').trim(), model: modelKey }
+        const fm = parseFrontmatter(raw)
+        return { prompt: raw.replace(/^---[\s\S]*?---\n?/, '').trim(), model: fm.model || null, isolation: fm.isolation, skills: fm.skills }
       }
     }
     const agentFile = findAgentFile(agentId)
     if (agentFile) {
       const raw = fs.readFileSync(agentFile, 'utf8')
-      const modelMatch = raw.match(/^model:\s*(.+)$/m)
-      const modelKey = modelMatch ? modelMatch[1].trim() : null
+      const fm = parseFrontmatter(raw)
       const prompt = raw.replace(/^---[\s\S]*?---\n?/, '').trim()
-      // Auto-load skill context
+      // Auto-load skill context — check local v4.0.3 skills first, then DATA_DIR/skills
       let skillContext = ''
       try {
         const alias = SKILL_CONTEXT_ALIASES[agentId.toLowerCase()]
         const baseName = alias || (agentId.charAt(0).toUpperCase() + agentId.slice(1))
-        const skillCtxPath = path.join(DATA_DIR, 'skills', baseName + 'Context.md')
+        const localSkillCtx = path.join(__dirname, '..', 'skills', 'Agents', baseName + 'Context.md')
+        const dataSkillCtx = path.join(DATA_DIR, 'skills', baseName + 'Context.md')
+        const skillCtxPath = fs.existsSync(localSkillCtx) ? localSkillCtx : dataSkillCtx
         if (fs.existsSync(skillCtxPath)) {
           skillContext = '\n\n---\n## SKILL CONTEXT\n'
             + fs.readFileSync(skillCtxPath, 'utf8') + '\n---'
         }
       } catch {}
-      return { prompt: prompt + skillContext, model: modelKey }
+      return {
+        prompt: prompt + skillContext,
+        model: fm.model || null,
+        isolation: fm.isolation,
+        skills: fm.skills,
+        permissions: fm.permissions,
+        color: fm.color,
+      }
     }
   } catch {}
   return { prompt: fallbackPrompt, model: null }
@@ -90,6 +129,7 @@ function loadAgentSystemPrompt(agentId, fallbackPrompt) {
 module.exports = {
   findAgentFile,
   resolveModel,
+  parseFrontmatter,
   loadAgentSystemPrompt,
   SKILL_CONTEXT_ALIASES,
 }

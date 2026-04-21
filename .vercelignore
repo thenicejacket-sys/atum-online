@@ -1,0 +1,13 @@
+server.original.js
+site/
+.git
+.vercel
+node_modules
+# v4.0.3 assets (not needed for serverless — modules have graceful fallback)
+skills/
+PAI/
+VoiceServer/
+agents/
+settings.v4.0.3.json
+CLAUDE.md.template
+CLAUDE.md

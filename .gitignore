@@ -7,3 +7,4 @@ data/databases/*.json
 .DS_Store
 Thumbs.db
 .vercel
+.env*.local

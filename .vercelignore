@@ -7,7 +7,7 @@ node_modules
 skills/
 PAI/
 VoiceServer/
-agents/
+/agents/
 settings.v4.0.3.json
 CLAUDE.md.template
 CLAUDE.md

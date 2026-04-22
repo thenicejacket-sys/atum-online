@@ -1,3 +1,7 @@
 {
-  "enabled": false
+  "enabled": true,
+  "check_interval_min": 5,
+  "reply_mode": "send",
+  "max_emails_per_check": 5,
+  "label_processed": "PAI-Processed"
 }

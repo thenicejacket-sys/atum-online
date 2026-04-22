@@ -2,8 +2,8 @@ name: Gmail Auto-Reply Daemon
 
 on:
   schedule:
-    - cron: '*/5 * * * *'    # Toutes les 5 minutes, 24h/24
-  workflow_dispatch:           # Bouton "Run workflow" manuel sur GitHub
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 jobs:
   check-email:

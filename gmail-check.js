@@ -769,10 +769,15 @@ async function main () {
       const refs    = getHeader(hdrs, 'References')
       const body    = extractText(full.payload)
 
-      // ── Ignorer les emails envoyés par le daemon lui-même (anti-boucle) ──
+      // ── Anti-boucle : ignorer uniquement les RÉPONSES envoyées par le daemon ──
+      // On laisse passer les emails originaux (self-to-self) pour permettre le test
+      // et l'envoi d'emails à soi-même avec un nom d'agent dans le sujet.
+      // Seules les réponses "Re:" auto-envoyées sont bloquées (le daemon qui se répond).
       const fromEmail = from.replace(/.*<(.+)>.*/, '$1').trim() || from.trim()
-      if (fromEmail === ownerEmail || from.includes(ownerEmail)) {
-        console.log(`[Gmail] 🚫 Email auto-envoyé ignoré (anti-boucle) — ${from}`)
+      const isSelfSent = fromEmail === ownerEmail || from.includes(ownerEmail)
+      const isReply = /^re:\s/i.test(subject.trim())
+      if (isSelfSent && isReply) {
+        console.log(`[Gmail] 🚫 Réponse auto-envoyée ignorée (anti-boucle) — ${from}`)
         await gmailPost(`/users/me/messages/${msg.id}/modify`, token, { addLabelIds: [labelSeenId] })
         continue
       }

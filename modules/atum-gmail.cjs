@@ -194,8 +194,10 @@ async function checkNewGmailEmailsWeb() {
         const msgId = getGmailHeader(hdrs, 'Message-ID')
         const refs = getGmailHeader(hdrs, 'References')
         const body = extractGmailEmailText(full.payload)
-        if (from.includes(ownerEmail) && ownerEmail) {
-          console.log(`[Gmail] Reponse de ${from} ignoree (anti-boucle)`)
+        const isSelfSent = ownerEmail && from.includes(ownerEmail)
+        const isReply = /^re:\s/i.test(subject.trim())
+        if (isSelfSent && isReply) {
+          console.log(`[Gmail] Reponse auto-envoyee ignoree (anti-boucle) — ${from}`)
           await gmailPostReq(`/users/me/messages/${msg.id}/modify`, token, { addLabelIds: [labelId] })
           continue
         }

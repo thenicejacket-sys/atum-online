@@ -269,7 +269,6 @@
     `
 
     const currentKey = localStorage.getItem('atum_api_key') || ''
-    const currentModel = localStorage.getItem('atum_model') || 'claude-sonnet-4-6'
 
     modal.innerHTML = `
       <h2 style="margin:0 0 8px;font-size:18px;font-weight:600;">⚙️ Configuration ATUM</h2>
@@ -280,18 +279,13 @@
       </p>
 
       <label style="display:block;font-size:12px;color:#888;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">Clé API</label>
-      <input id="atum-key-input" type="password" placeholder="sk-ant-... ou sk-or-v1-..."
+      <input id="atum-key-input" type="text" placeholder="sk-ant-... ou sk-or-v1-..."
         value="${currentKey}"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        data-lpignore="true" data-form-type="other" data-1p-ignore="true" name="atum-api-key-no-autofill"
         style="width:100%;box-sizing:border-box;background:#2A2A3C;border:1px solid #444;border-radius:6px;
-               padding:10px 12px;color:#F0ECE4;font-size:13px;margin-bottom:16px;outline:none;" />
-
-      <label style="display:block;font-size:12px;color:#888;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">Modèle</label>
-      <select id="atum-model-select"
-        style="width:100%;box-sizing:border-box;background:#2A2A3C;border:1px solid #444;border-radius:6px;
-               padding:10px 12px;color:#F0ECE4;font-size:13px;margin-bottom:24px;outline:none;cursor:pointer;">
-        <option value="claude-haiku-4-5-20251001" ${currentModel === 'claude-haiku-4-5-20251001' ? 'selected' : ''}>Haiku 4.5 — Défaut (rapide, économique)</option>
-        <option value="claude-sonnet-4-6" ${currentModel === 'claude-sonnet-4-6' ? 'selected' : ''}>Sonnet 4.6 — Analyses complexes</option>
-      </select>
+               padding:10px 12px;color:#F0ECE4;font-size:13px;margin-bottom:24px;outline:none;
+               font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;" />
 
       <div style="display:flex;gap:10px;">
         <button id="atum-save-btn"
@@ -312,7 +306,6 @@
     document.body.appendChild(overlay)
 
     const input = document.getElementById('atum-key-input')
-    const modelSelect = document.getElementById('atum-model-select')
     const saveBtn = document.getElementById('atum-save-btn')
     const cancelBtn = document.getElementById('atum-cancel-btn')
     const errorEl = document.getElementById('atum-key-error')
@@ -321,14 +314,12 @@
 
     saveBtn.addEventListener('click', function () {
       const key = input.value.trim()
-      const model = modelSelect.value
       if (!key.startsWith('sk-ant-') && !key.startsWith('sk-or-v1-')) {
         errorEl.textContent = 'Format invalide. La clé doit commencer par sk-ant- (Anthropic) ou sk-or-v1- (OpenRouter)'
         errorEl.style.display = 'block'
         return
       }
       localStorage.setItem('atum_api_key', key)
-      localStorage.setItem('atum_model', model)
       overlay.remove()
     })
 

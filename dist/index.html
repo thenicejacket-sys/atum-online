@@ -324,5 +324,313 @@
   </head>
   <body>
     <div id="root"></div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         ATUM CORNER LOGO — bas-droite, visible après login
+         ══════════════════════════════════════════════════════════════ -->
+    <style>
+      #atum-corner-logo {
+        position: fixed;
+        bottom: 18px;
+        right: 18px;
+        width: 88px;
+        height: auto;
+        z-index: 999998;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.6s ease 0.2s;
+        user-select: none;
+        filter: drop-shadow(0 4px 12px rgba(0,0,0,0.35));
+      }
+      #atum-corner-logo.visible { opacity: 0.95; }
+      html[data-theme="light"] #atum-corner-logo { content: url('./atum-logo-light.jpg'); }
+      html[data-theme="dark"]  #atum-corner-logo { content: url('./atum-logo-dark.jpg'); }
+      @media (max-width: 640px) {
+        #atum-corner-logo { width: 64px; bottom: 12px; right: 12px; }
+      }
+    </style>
+    <img id="atum-corner-logo" src="./atum-logo-dark.jpg" alt="ATUM" />
+    <script>
+    (function() {
+      var img = document.getElementById('atum-corner-logo');
+      // Afficher seulement si l'utilisateur est déjà logué (ou après fermeture overlay)
+      function _show() {
+        if (!document.getElementById('atum-login-overlay')) {
+          img.classList.add('visible');
+        } else {
+          setTimeout(_show, 200);
+        }
+      }
+      try {
+        var u = JSON.parse(localStorage.getItem('atum_user') || 'null');
+        if (u && (u.prenom === 'admin' || (u.prenom && u.societe))) {
+          img.classList.add('visible');
+        } else {
+          _show();
+        }
+      } catch(e) { _show(); }
+    })();
+    </script>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         ATUM LOGIN OVERLAY — injecté avant React
+         ══════════════════════════════════════════════════════════════ -->
+    <style>
+      #atum-login-overlay {
+        position: fixed; inset: 0; z-index: 2147483647;
+        display: flex; align-items: center; justify-content: center;
+        background: radial-gradient(circle at 50% 50%, #0f1a2e 0%, #050a14 100%);
+        overflow: hidden;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+      #atum-login-overlay .atum-title-splash {
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%) scale(0.3);
+        font-size: 12vmin; font-weight: 700; letter-spacing: 0.4em;
+        color: #14b8a6;
+        text-shadow: 0 0 40px rgba(20, 184, 166, 0.6);
+        opacity: 0;
+        transition: opacity 0.6s ease, transform 0.6s cubic-bezier(.34,1.56,.64,1);
+        pointer-events: none;
+      }
+      #atum-login-overlay.intro .atum-title-splash { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+      #atum-login-overlay.zoom  .atum-title-splash { opacity: 1; transform: translate(-50%, -50%) scale(1.4); }
+      #atum-login-overlay.form  .atum-title-splash { opacity: 0; transform: translate(-50%, -50%) scale(2); }
+
+      #atum-login-overlay .atum-flash {
+        position: absolute; inset: 0;
+        background: #ffffff; opacity: 0; pointer-events: none;
+      }
+      #atum-login-overlay.zoom .atum-flash {
+        animation: atumFlash 0.5s ease-out;
+      }
+      @keyframes atumFlash {
+        0%   { opacity: 0; }
+        30%  { opacity: 0.7; }
+        100% { opacity: 0; }
+      }
+
+      #atum-login-overlay.shake {
+        animation: atumShake 0.5s cubic-bezier(.36,.07,.19,.97);
+      }
+      @keyframes atumShake {
+        10%, 90%  { transform: translate3d(-2px, 0, 0); }
+        20%, 80%  { transform: translate3d(4px, -2px, 0); }
+        30%, 70%  { transform: translate3d(-6px, 2px, 0); }
+        40%, 60%  { transform: translate3d(6px, -2px, 0); }
+        50%       { transform: translate3d(-4px, 2px, 0); }
+      }
+
+      #atum-login-overlay .atum-panel {
+        position: relative; z-index: 2;
+        width: min(90vw, 420px);
+        background: rgba(15, 26, 46, 0.92);
+        border: 1px solid rgba(20, 184, 166, 0.25);
+        border-radius: 18px;
+        padding: 36px 32px 30px;
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255,255,255,0.03) inset;
+        backdrop-filter: blur(14px);
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+        transition: opacity 0.5s ease 0.2s, transform 0.5s cubic-bezier(.34,1.56,.64,1) 0.2s;
+      }
+      #atum-login-overlay.form .atum-panel { opacity: 1; transform: translateY(0) scale(1); }
+
+      #atum-login-overlay .atum-panel h2 {
+        margin: 0 0 6px; font-size: 26px; font-weight: 700; letter-spacing: 0.15em;
+        color: #14b8a6; text-align: center;
+      }
+      #atum-login-overlay .atum-panel .atum-subtitle {
+        margin: 0 0 26px; font-size: 13px; color: rgba(255,255,255,0.55);
+        text-align: center; letter-spacing: 0.05em;
+      }
+      #atum-login-overlay .atum-field { margin-bottom: 14px; }
+      #atum-login-overlay .atum-input,
+      #atum-login-overlay .atum-select {
+        width: 100%; padding: 13px 14px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 10px; color: #fff; font-size: 14px;
+        font-family: inherit; outline: none;
+        transition: border-color 0.2s ease, background 0.2s ease;
+        box-sizing: border-box;
+      }
+      #atum-login-overlay .atum-select {
+        color-scheme: dark;
+        appearance: none;
+        -webkit-appearance: none;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%2314b8a6' d='M6 8L0 0h12z'/></svg>");
+        background-repeat: no-repeat;
+        background-position: right 14px center;
+        padding-right: 36px;
+      }
+      #atum-login-overlay .atum-input:focus,
+      #atum-login-overlay .atum-select:focus {
+        border-color: #14b8a6; background: rgba(20, 184, 166, 0.06);
+      }
+      #atum-login-overlay .atum-select option {
+        background: #0f1a2e;
+        color: #ffffff;
+        padding: 8px;
+      }
+      #atum-login-overlay .atum-select option:checked,
+      #atum-login-overlay .atum-select option:hover {
+        background: #14b8a6;
+        color: #ffffff;
+      }
+      #atum-login-overlay .atum-input.error {
+        border-color: #ef4444; animation: atumShakeField 0.3s;
+      }
+      @keyframes atumShakeField {
+        25% { transform: translateX(-4px); }
+        75% { transform: translateX(4px); }
+      }
+      #atum-login-overlay .atum-error-msg {
+        color: #ef4444; font-size: 12px; margin: 4px 0 0 4px; min-height: 14px;
+      }
+      #atum-login-overlay .atum-submit {
+        width: 100%; margin-top: 8px; padding: 14px;
+        background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+        border: none; border-radius: 10px;
+        color: #fff; font-size: 14px; font-weight: 600; letter-spacing: 0.15em;
+        cursor: pointer; text-transform: uppercase;
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+      }
+      #atum-login-overlay .atum-submit:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 30px rgba(20, 184, 166, 0.35);
+      }
+      #atum-login-overlay .atum-submit:active { transform: translateY(0); }
+    </style>
+
+    <script>
+    (function () {
+      // Si déjà logué → skip overlay
+      try {
+        var existing = JSON.parse(localStorage.getItem('atum_user') || 'null');
+        if (existing && (existing.prenom === 'admin' || (existing.prenom && existing.societe))) {
+          return;
+        }
+      } catch (e) {}
+
+      var overlay = document.createElement('div');
+      overlay.id = 'atum-login-overlay';
+      overlay.className = 'intro';
+      overlay.innerHTML = [
+        '<div class="atum-flash"></div>',
+        '<div class="atum-title-splash">ATUM</div>',
+        '<div class="atum-panel">',
+          '<h2>ATUM</h2>',
+          '<p class="atum-subtitle">Agentic Target Utility Model</p>',
+          '<form id="atum-login-form" autocomplete="off">',
+            '<div class="atum-field">',
+              '<input class="atum-input" id="atum-prenom" placeholder="Prénom *" autocomplete="off" autofocus />',
+              '<div class="atum-error-msg" id="atum-err-prenom"></div>',
+            '</div>',
+            '<div class="atum-field" id="atum-societe-wrap">',
+              '<select class="atum-select" id="atum-societe">',
+                '<option value="">Société *</option>',
+                '<option value="Saint-Gobain">Saint-Gobain</option>',
+                '<option value="Havea">Havea</option>',
+                '<option value="Freelance">Freelance</option>',
+                '<option value="Autre">Autre…</option>',
+              '</select>',
+              '<div class="atum-error-msg" id="atum-err-societe"></div>',
+            '</div>',
+            '<div class="atum-field" id="atum-societe-autre-wrap" style="display:none">',
+              '<input class="atum-input" id="atum-societe-autre" placeholder="Nom de ta société" autocomplete="off" />',
+            '</div>',
+            '<button type="submit" class="atum-submit">Entrer</button>',
+          '</form>',
+        '</div>'
+      ].join('');
+      document.body.appendChild(overlay);
+
+      // Cache #root pendant l'overlay
+      var root = document.getElementById('root');
+      if (root) root.style.display = 'none';
+
+      // Séquence d'animation
+      setTimeout(function() { overlay.classList.remove('intro'); overlay.classList.add('zoom'); }, 700);
+      setTimeout(function() { overlay.classList.add('shake'); }, 1100);
+      setTimeout(function() {
+        overlay.classList.remove('zoom'); overlay.classList.remove('shake');
+        overlay.classList.add('form');
+        var p = document.getElementById('atum-prenom'); if (p) p.focus();
+      }, 1700);
+
+      // Toggle "Autre"
+      var selSociete = document.getElementById('atum-societe');
+      var wrapAutre = document.getElementById('atum-societe-autre-wrap');
+      selSociete.addEventListener('change', function() {
+        wrapAutre.style.display = selSociete.value === 'Autre' ? 'block' : 'none';
+        if (selSociete.value === 'Autre') {
+          setTimeout(function(){ document.getElementById('atum-societe-autre').focus(); }, 50);
+        }
+      });
+
+      // Admin bypass : cache le champ société si prénom === "admin"
+      var inpPrenom = document.getElementById('atum-prenom');
+      var wrapSociete = document.getElementById('atum-societe-wrap');
+      inpPrenom.addEventListener('input', function() {
+        var isAdmin = inpPrenom.value.trim().toLowerCase() === 'admin';
+        wrapSociete.style.display = isAdmin ? 'none' : 'block';
+        wrapAutre.style.display = (isAdmin || selSociete.value !== 'Autre') ? 'none' : 'block';
+      });
+
+      // Submit
+      document.getElementById('atum-login-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var prenom = inpPrenom.value.trim();
+        var errPrenom = document.getElementById('atum-err-prenom');
+        var errSociete = document.getElementById('atum-err-societe');
+        errPrenom.textContent = ''; errSociete.textContent = '';
+        inpPrenom.classList.remove('error'); selSociete.classList.remove('error');
+
+        // Admin bypass
+        if (prenom.toLowerCase() === 'admin') {
+          localStorage.setItem('atum_user', JSON.stringify({ prenom: 'admin', societe: 'admin', isAdmin: true }));
+          closeOverlay();
+          return;
+        }
+
+        if (!prenom) {
+          errPrenom.textContent = 'Le prénom est obligatoire';
+          inpPrenom.classList.add('error');
+          return;
+        }
+        var societeVal = selSociete.value;
+        if (!societeVal) {
+          errSociete.textContent = 'Sélectionne une société';
+          selSociete.classList.add('error');
+          return;
+        }
+        if (societeVal === 'Autre') {
+          var libre = document.getElementById('atum-societe-autre').value.trim();
+          if (!libre) {
+            errSociete.textContent = 'Indique le nom de ta société';
+            document.getElementById('atum-societe-autre').classList.add('error');
+            return;
+          }
+          societeVal = libre;
+        }
+
+        localStorage.setItem('atum_user', JSON.stringify({
+          prenom: prenom, societe: societeVal, isAdmin: false
+        }));
+        closeOverlay();
+      });
+
+      function closeOverlay() {
+        overlay.style.transition = 'opacity 0.4s ease';
+        overlay.style.opacity = '0';
+        setTimeout(function() {
+          overlay.remove();
+          if (root) root.style.display = '';
+        }, 400);
+      }
+    })();
+    </script>
   </body>
 </html>

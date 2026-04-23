@@ -76,7 +76,7 @@
       panel.appendChild(sep)
 
       var apiBtn = document.createElement('button')
-      apiBtn.textContent = '🔑  Clé API / Modèle'
+      apiBtn.textContent = '🔑  Clé API'
       apiBtn.style.cssText = [
         'width:100%', 'padding:10px 12px', 'border-radius:8px', 'text-align:left',
         'border:1px solid var(--color-border,rgba(255,255,255,0.1))',
@@ -136,6 +136,32 @@
         fetch('/api/gmail-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: newVal }) }).catch(function () {})
       }
     })
+
+    // ── SECTION Déconnexion ────────────────────────────────────────────────
+    var sep4 = document.createElement('div')
+    sep4.style.cssText = 'border-top:1px solid var(--color-border,rgba(255,255,255,0.07));margin:16px 0 14px'
+    panel.appendChild(sep4)
+
+    var logoutBtn = document.createElement('button')
+    logoutBtn.textContent = '🚪  Déconnexion'
+    logoutBtn.style.cssText = [
+      'width:100%', 'padding:10px 12px', 'border-radius:8px', 'text-align:left',
+      'border:1px solid rgba(239,68,68,0.3)',
+      'background:transparent', 'color:#ef4444',
+      'cursor:pointer', 'font-size:13px', 'font-weight:500',
+      'transition:background .15s',
+    ].join(';')
+    logoutBtn.addEventListener('mouseenter', function () {
+      logoutBtn.style.background = 'rgba(239,68,68,0.08)'
+    })
+    logoutBtn.addEventListener('mouseleave', function () {
+      logoutBtn.style.background = 'transparent'
+    })
+    logoutBtn.addEventListener('click', function () {
+      try { localStorage.removeItem('atum_user') } catch (e) {}
+      location.reload()
+    })
+    panel.appendChild(logoutBtn)
 
     // Fermer en cliquant dehors
     setTimeout(function () {

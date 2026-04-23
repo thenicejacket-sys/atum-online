@@ -617,7 +617,7 @@ function registerChatRoute(app, kb) {
           || (errLow.includes('network') && !errLow.includes('cannot find module'))
           || errLow.includes('fetch failed')
         const isAuth401 = errLow.includes('401') || errLow.includes('authentication_error') || errLow.includes('invalid x-api-key')
-        const isRetryable = isRateLimit || isServerError || isNetworkError
+        const isRetryable = isRateLimit || isServerError || isNetworkError || isAuth401
 
         if (isRateLimit) { isRateLimited = true; lastErrorType = 'rateLimit' }
         else if (isAuth401) { lastErrorType = 'auth401' }

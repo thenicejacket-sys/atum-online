@@ -723,25 +723,68 @@ Tu as un document ou une image en pièce jointe. Applique ces règles sans excep
   return { reply, excelBuffer, excelFilename }
 }
 
+// ── Reply-to-All — calcule les destinataires (To + Cc) ────────────────────
+// Règles :
+//   - To = Reply-To si présent, sinon From original (= expéditeur)
+//   - To additionnel = tous les To originaux SAUF nous-mêmes
+//   - Cc = tous les Cc originaux SAUF nous-mêmes ET sauf le destinataire principal
+// Anti-doublons par email (case-insensitive). On retire toujours ownerEmail.
+function _splitAddresses (str) {
+  if (!str) return []
+  // Découpage simple par virgule (suffisant pour l'usage Reply-to-All)
+  return str.split(',').map(s => s.trim()).filter(Boolean)
+}
+function _emailOf (addr) {
+  const m = (addr || '').match(/<([^>]+)>/)
+  return (m ? m[1] : addr).trim().toLowerCase()
+}
+function buildReplyAllRecipients ({ from, to, cc, replyTo, ownerEmail }) {
+  const owner = (ownerEmail || '').toLowerCase()
+  const primary = (replyTo && replyTo.trim()) ? replyTo.trim() : (from || '').trim()
+  const seen = new Set()
+  if (primary) seen.add(_emailOf(primary))
+  seen.add(owner)
+
+  const toList = []
+  for (const a of _splitAddresses(to)) {
+    const e = _emailOf(a)
+    if (!e || seen.has(e)) continue
+    seen.add(e); toList.push(a)
+  }
+  const ccList = []
+  for (const a of _splitAddresses(cc)) {
+    const e = _emailOf(a)
+    if (!e || seen.has(e)) continue
+    seen.add(e); ccList.push(a)
+  }
+
+  return {
+    to: [primary, ...toList].filter(Boolean).join(', '),
+    cc: ccList.join(', ')
+  }
+}
+
 // ── Construction de l'email MIME (texte seul) ─────────────────────────────
-function buildMime ({ to, from, subject, body, replyToMsgId, references }) {
+function buildMime ({ to, cc, from, subject, body, replyToMsgId, references }) {
   const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`
   let mime = `From: ${from}\r\nTo: ${to}\r\n`
-  if (replyToMsgId) mime += `In-Reply-To: ${replyToMsgId}\r\n`
-  if (references)   mime += `References: ${references}\r\n`
+  if (cc)            mime += `Cc: ${cc}\r\n`
+  if (replyToMsgId)  mime += `In-Reply-To: ${replyToMsgId}\r\n`
+  if (references)    mime += `References: ${references}\r\n`
   mime += `Subject: Re: ${subjectEncoded}\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n`
   mime += Buffer.from(body).toString('base64')
   return Buffer.from(mime).toString('base64url')
 }
 
 // ── Construction de l'email MIME avec pièce jointe Excel ─────────────────
-function buildMimeWithAttachment ({ to, from, subject, body, replyToMsgId, references, attachmentBuffer, attachmentFilename }) {
+function buildMimeWithAttachment ({ to, cc, from, subject, body, replyToMsgId, references, attachmentBuffer, attachmentFilename }) {
   const boundary       = `PAI_BOUNDARY_${Date.now()}`
   const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`
 
   let mime = `From: ${from}\r\nTo: ${to}\r\n`
-  if (replyToMsgId) mime += `In-Reply-To: ${replyToMsgId}\r\n`
-  if (references)   mime += `References: ${references}\r\n`
+  if (cc)            mime += `Cc: ${cc}\r\n`
+  if (replyToMsgId)  mime += `In-Reply-To: ${replyToMsgId}\r\n`
+  if (references)    mime += `References: ${references}\r\n`
   mime += `Subject: Re: ${subjectEncoded}\r\n`
   mime += `MIME-Version: 1.0\r\n`
   mime += `Content-Type: multipart/mixed; boundary="${boundary}"\r\n\r\n`
@@ -795,6 +838,9 @@ async function main () {
       const full    = await gmailGet(`/users/me/messages/${msg.id}?format=full`, token)
       const hdrs    = full.payload?.headers || []
       const from    = getHeader(hdrs, 'From')
+      const toHdr   = getHeader(hdrs, 'To')
+      const ccHdr   = getHeader(hdrs, 'Cc')
+      const replyTo = getHeader(hdrs, 'Reply-To')
       const subject = getHeader(hdrs, 'Subject')
       const msgId   = getHeader(hdrs, 'Message-ID')
       const refs    = getHeader(hdrs, 'References')
@@ -834,17 +880,26 @@ async function main () {
       console.log(`[Gmail] ✍️  ${agent.name} répond à ${from} (sujet: "${subject}")`)
       const { reply, excelBuffer, excelFilename } = await callAgent(agent, { from, subject, body }, textBlocks, visionBlocks)
 
-      // ── Construction et envoi de la réponse ──────────────────────────────
+      // ── Construction et envoi de la réponse — REPLY TO ALL ───────────────
+      // To = expéditeur (Reply-To si présent, sinon From) + tous les To originaux sauf nous
+      // Cc = tous les Cc originaux sauf nous et sauf doublons
+      const recipients = buildReplyAllRecipients({
+        from, to: toHdr, cc: ccHdr, replyTo, ownerEmail
+      })
+      console.log(`[Gmail] 📧 Reply-to-all → To: ${recipients.to}${recipients.cc ? ` | Cc: ${recipients.cc}` : ''}`)
+
       const raw = excelBuffer
         ? buildMimeWithAttachment({
-            to: from, from: ownerEmail, subject, body: reply,
+            to: recipients.to, cc: recipients.cc,
+            from: ownerEmail, subject, body: reply,
             replyToMsgId: msgId,
             references: refs ? `${refs} ${msgId}` : msgId,
             attachmentBuffer: excelBuffer,
             attachmentFilename: excelFilename
           })
         : buildMime({
-            to: from, from: ownerEmail, subject, body: reply,
+            to: recipients.to, cc: recipients.cc,
+            from: ownerEmail, subject, body: reply,
             replyToMsgId: msgId,
             references: refs ? `${refs} ${msgId}` : msgId
           })

@@ -530,10 +530,41 @@ function loadAgents () {
   } catch { return [] }
 }
 
-// ── Détection de l'agent par le sujet de l'email ──────────────────────────
-function detectAgent (subject, agents) {
-  const lc = subject.toLowerCase()
-  return agents.find(a => lc.includes(a.name.toLowerCase())) || null
+// ── Détection de l'agent par le sujet + fallback ticket/facture → Christian ─
+// Règle 1 (priorité) : nom d'agent explicitement dans le sujet (ex: "Christian - ...")
+// Règle 2 (fallback) : email de type facture/ticket/reçu/note de frais → Christian
+//   - mots-clés sujet (français + anglais, gère "Fwd:" / "TR:")
+//   - OU filenames PJ qui ressemblent à un document comptable
+function detectAgent (subject, agents, attachmentFilenames) {
+  const lc = (subject || '').toLowerCase()
+  // 1. Match direct sur le nom d'agent
+  const direct = agents.find(a => lc.includes(a.name.toLowerCase()))
+  if (direct) return direct
+
+  // 2. Fallback Christian — ticket/facture/reçu/note de frais
+  const fnames = (attachmentFilenames || []).join(' ').toLowerCase()
+  const haystack = lc + ' ' + fnames
+  const RX_COMPTABLE = /\b(ticket|facture|fact[\.\s_-]|fa[\.\s_-]?\d|re[cç]u|receipt|invoice|note\s*de\s*frais|justificatif|quittance|bon\s*de\s*caisse)\b/i
+  if (RX_COMPTABLE.test(haystack)) {
+    const christian = agents.find(a => a.id === 'christian')
+    if (christian) {
+      console.log(`[Gmail] 🧾 Fallback comptable détecté ("${subject}") → Christian`)
+      return christian
+    }
+  }
+  return null
+}
+
+// Pré-scan des filenames PJ (sans télécharger les bytes) — sert au fallback Christian
+function collectAttachmentFilenames (payload) {
+  const names = []
+  function walk (part) {
+    if (!part) return
+    if (part.filename && part.filename.length > 0) names.push(part.filename)
+    if (part.parts) part.parts.forEach(walk)
+  }
+  walk(payload)
+  return names
 }
 
 // ── Tool definition: generate_excel ───────────────────────────────────────
@@ -782,7 +813,11 @@ async function main () {
         continue
       }
 
-      const agent = detectAgent(subject, agents)
+      // Pré-scan filenames PJ (lecture metadata uniquement, pas de download)
+      // — utile au fallback Christian quand le sujet ne mentionne pas l'agent
+      // mais qu'une PJ ressemble à un document comptable (ticket_*, facture_*, etc.)
+      const attachmentFilenames = collectAttachmentFilenames(full.payload)
+      const agent = detectAgent(subject, agents, attachmentFilenames)
       if (!agent) {
         // Aucun agent ne correspond — label caché uniquement (pas de PAI-Processed visible)
         console.log(`[Gmail] ⏭️  Aucun agent pour "${subject}" — marqué PAI-Seen (caché)`)

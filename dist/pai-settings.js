@@ -137,13 +137,41 @@
       }
     })
 
+    // ── SECTION Vue Admin (visible uniquement si admin) ────────────────────
+    if (window._atumIsAdmin && window._atumIsAdmin()) {
+      var sepAdmin = document.createElement('div')
+      sepAdmin.style.cssText = 'border-top:1px solid var(--color-border,rgba(255,255,255,0.07));margin:16px 0 14px'
+      panel.appendChild(sepAdmin)
+
+      var adminBtn = document.createElement('button')
+      adminBtn.textContent = '👥  Vue Admin — Utilisateurs & agents'
+      adminBtn.style.cssText = [
+        'width:100%', 'padding:10px 12px', 'border-radius:8px', 'text-align:left',
+        'border:1px solid rgba(20,184,166,0.35)',
+        'background:rgba(20,184,166,0.08)', 'color:#14b8a6',
+        'cursor:pointer', 'font-size:13px', 'font-weight:500',
+        'transition:background .15s',
+      ].join(';')
+      adminBtn.addEventListener('mouseenter', function () {
+        adminBtn.style.background = 'rgba(20,184,166,0.15)'
+      })
+      adminBtn.addEventListener('mouseleave', function () {
+        adminBtn.style.background = 'rgba(20,184,166,0.08)'
+      })
+      adminBtn.addEventListener('click', function () {
+        panel.remove()
+        if (window._atumShowAdminStats) window._atumShowAdminStats()
+      })
+      panel.appendChild(adminBtn)
+    }
+
     // ── SECTION Déconnexion ────────────────────────────────────────────────
     var sep4 = document.createElement('div')
     sep4.style.cssText = 'border-top:1px solid var(--color-border,rgba(255,255,255,0.07));margin:16px 0 14px'
     panel.appendChild(sep4)
 
     var logoutBtn = document.createElement('button')
-    logoutBtn.textContent = '🚪  Déconnexion'
+    logoutBtn.textContent = 'Se déconnecter'
     logoutBtn.style.cssText = [
       'width:100%', 'padding:10px 12px', 'border-radius:8px', 'text-align:left',
       'border:1px solid rgba(239,68,68,0.3)',
@@ -158,6 +186,7 @@
       logoutBtn.style.background = 'transparent'
     })
     logoutBtn.addEventListener('click', function () {
+      if (!confirm('Se déconnecter ? Vous reverrez l\'écran de login au prochain démarrage.')) return
       try { localStorage.removeItem('atum_user') } catch (e) {}
       location.reload()
     })

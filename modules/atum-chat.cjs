@@ -83,7 +83,10 @@ function registerChatRoute(app, kb) {
     const { agentId, systemPrompt, messages, workspacePath, attachments, model: requestModel } = req.body
 
     // ── Record agent usage (fire & forget) ────────────────────────────────
-    recordAgentUsage(agentId)
+    const _decodeHdr = (v) => { try { return v ? decodeURIComponent(v) : null } catch (e) { return v || null } }
+    const _userPrenom  = _decodeHdr(req.headers['x-user-prenom'])  || req.body.userPrenom  || null
+    const _userSociete = _decodeHdr(req.headers['x-user-societe']) || req.body.userSociete || null
+    recordAgentUsage(agentId, _userPrenom, _userSociete)
 
     // ── FAST PATH: Simple messages → lightweight context, no tools, Haiku ─
     if (isSimpleMessage(messages, attachments)) {

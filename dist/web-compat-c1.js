@@ -99,6 +99,16 @@
 
       chatStreamHandlers.forEach(h => h({ type: 'start', timestamp: Date.now() }))
 
+      // ── User tracking (prénom + société depuis login) ───────────────────
+      let _userPrenom = '', _userSociete = ''
+      try {
+        const _u = JSON.parse(localStorage.getItem('atum_user') || 'null')
+        if (_u) {
+          _userPrenom  = _u.prenom  || ''
+          _userSociete = _u.societe || ''
+        }
+      } catch (e) {}
+
       try {
         const response = await fetch(API_BASE + '/api/chat', {
           method: 'POST',
@@ -106,7 +116,9 @@
             'Content-Type': 'application/json',
             'X-Api-Key': apiKey,
             'X-Session-Id': sessionId,
-            'X-Model': getModel()
+            'X-Model': getModel(),
+            'X-User-Prenom':  encodeURIComponent(_userPrenom),
+            'X-User-Societe': encodeURIComponent(_userSociete)
           },
           body: JSON.stringify(params),
           signal: currentAbortController.signal

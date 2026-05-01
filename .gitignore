@@ -8,3 +8,7 @@ data/databases/*.json
 Thumbs.db
 .vercel
 .env*.local
+
+# Atum Online Upgrade est un repo git separe (vendor+custom+build pattern)
+Atum Online Upgrade/
+Atum Online Upgrade.backup-*/
